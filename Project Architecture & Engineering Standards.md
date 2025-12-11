@@ -24,6 +24,7 @@ This document describes the **folder structure**, **architectural rules**, **dep
 Breaking these rules is considered a **critical violation** because it compromises engine stability.
 
 ---
+Always make the game use arrow keys avoid making it use letters that is should be needed to
 
 # **1. Project Structure (AAA Layered Architecture)**
 

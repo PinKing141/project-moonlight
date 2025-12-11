@@ -25,9 +25,10 @@ class GameService:
         world_repo: WorldRepository | None = None,
         progression: WorldProgression | None = None,
         class_repo: ClassRepository | None = None,
-    ) -> None:
+) -> None:
         from rpg.application.services.character_creation_service import CharacterCreationService
         from rpg.application.services.encounter_service import EncounterService
+        from rpg.application.services.combat_service import CombatService
 
         self.character_repo = character_repo
         self.entity_repo = entity_repo
@@ -36,6 +37,7 @@ class GameService:
         self.progression = progression
         self.character_creation_service = None
         self.encounter_service = None
+        self.combat_service = None
 
         if class_repo and location_repo:
             self.character_creation_service = CharacterCreationService(
@@ -44,6 +46,56 @@ class GameService:
 
         if entity_repo:
             self.encounter_service = EncounterService(entity_repo)
+            self.combat_service = CombatService()
+
+    def rest(self, character_id: int) -> tuple[Character, Optional["World"]]:
+        character = self._require_character(character_id)
+        heal_amount = max(character.hp_max // 4, 4)
+        character.hp_current = min(character.hp_current + heal_amount, character.hp_max)
+        character.alive = True
+        self.character_repo.save(character)
+        world = self.advance_world(ticks=1)
+        return character, world
+
+    def advance_world(self, ticks: int = 1):
+        if not self.world_repo:
+            return None
+
+        # Prefer the progression pipeline if available.
+        if self.progression:
+            world = self._require_world()
+            self.progression.tick(world, ticks=ticks)
+            return world
+
+        world = self.world_repo.load_default()
+        if world is None:
+            raise ValueError("World not initialized")
+        world.advance_turns(ticks)
+        self.world_repo.save(world)
+        return world
+
+    def explore(self, character_id: int):
+        character = self._require_character(character_id)
+        world = self._require_world()
+
+        if not self.encounter_service:
+            return [], character, world
+
+        location = self.location_repo.get(character.location_id) if self.location_repo else None
+        faction_bias = None
+        if location and getattr(location, "factions", None):
+            faction_bias = location.factions[0] if location.factions else None
+
+        encounter = self.encounter_service.generate(
+            location_id=character.location_id or 0,
+            player_level=character.level,
+            world_turn=world.current_turn,
+            faction_bias=faction_bias,
+            max_enemies=2,
+        )
+
+        self.advance_world(ticks=1)
+        return encounter, character, world
 
     def get_player_view(self, player_id: int) -> str:
         world = self._require_world()
@@ -80,15 +132,13 @@ class GameService:
         location = self.location_repo.get(character.location_id)
 
         if choice == "rest":
-            character.hp_current = min(character.hp_current + 2, character.hp_max)
-            self.character_repo.save(character)
-            self.progression.tick(world, ticks=1)
+            self.rest(player_id)
             return ActionResult(messages=["You rest and feel a bit better."], game_over=False)
 
         # explore
         encounter_msg = self._run_encounter(character, world, location)
         self.character_repo.save(character)
-        self.progression.tick(world, ticks=1)
+        self.advance_world(ticks=1)
         return ActionResult(messages=[encounter_msg], game_over=not character.alive)
 
     def _run_encounter(self, character: Character, world, location: Optional[Location]) -> str:
@@ -143,7 +193,8 @@ class GameService:
         strength = character.attributes.get("strength", 0)
         attribute_bonus = strength if strength else might
         player_strike = rng.randint(character.attack_min, character.attack_max) + attribute_bonus
-        effective_player_damage = max(player_strike - monster.armor, 1)
+        modified_strike = int(player_strike * character.outgoing_damage_multiplier)
+        effective_player_damage = max(modified_strike - monster.armor, 1)
         monster_hp -= effective_player_damage
 
         if monster_hp <= 0:
@@ -164,7 +215,8 @@ class GameService:
             )
 
         monster_strike = rng.randint(monster.attack_min, monster.attack_max)
-        damage_taken = max(monster_strike - character.armor, 1)
+        modified_monster_strike = int(monster_strike * character.incoming_damage_multiplier)
+        damage_taken = max(modified_monster_strike - character.armor, 1)
         character.hp_current = max(character.hp_current - damage_taken, 0)
 
         if character.hp_current <= 0:

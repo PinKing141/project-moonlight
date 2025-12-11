@@ -41,16 +41,36 @@ def _bootstrap_inmemory() -> tuple[GameService, CharacterCreationService]:
     event_bus = EventBus()
     world_repo = InMemoryWorldRepository(seed=42)
     char_repo = InMemoryCharacterRepository({})
+    base = {
+        "fighter": {"STR": 15, "DEX": 12, "CON": 14, "INT": 10, "WIS": 10, "CHA": 10},
+        "rogue": {"STR": 10, "DEX": 16, "CON": 12, "INT": 12, "WIS": 10, "CHA": 12},
+        "wizard": {"STR": 8, "DEX": 12, "CON": 12, "INT": 16, "WIS": 12, "CHA": 10},
+    }
     class_repo = InMemoryClassRepository(
         [
-            CharacterClass(id=1, name="Fighter", slug="fighter", hit_die="d10", primary_ability="strength"),
-            CharacterClass(id=2, name="Rogue", slug="rogue", hit_die="d8", primary_ability="dexterity"),
+            CharacterClass(
+                id=1,
+                name="Fighter",
+                slug="fighter",
+                hit_die="d10",
+                primary_ability="strength",
+                base_attributes=base["fighter"],
+            ),
+            CharacterClass(
+                id=2,
+                name="Rogue",
+                slug="rogue",
+                hit_die="d8",
+                primary_ability="dexterity",
+                base_attributes=base["rogue"],
+            ),
             CharacterClass(
                 id=3,
                 name="Wizard",
                 slug="wizard",
                 hit_die="d6",
                 primary_ability="intelligence",
+                base_attributes=base["wizard"],
             ),
         ]
     )

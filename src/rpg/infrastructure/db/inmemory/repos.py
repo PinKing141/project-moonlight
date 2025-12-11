@@ -72,6 +72,9 @@ class InMemoryEntityRepository(EntityRepository):
     def set_location_entities(self, location_id: int, entity_ids: List[int]) -> None:
         self._by_location[location_id] = entity_ids
 
+    def list_by_level_band(self, level_min: int, level_max: int) -> List[Entity]:
+        return [e for e in self._entities if level_min <= e.level <= level_max]
+
 
 class InMemoryLocationRepository(LocationRepository):
     def __init__(self, locations: Dict[int, Location]) -> None:

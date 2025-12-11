@@ -39,6 +39,10 @@ class WorldRepository(ABC):
     def save(self, world: World) -> None:
         raise NotImplementedError
 
+    def get_default(self) -> Optional[World]:
+        """Convenience alias for load_default to align with UI expectations."""
+        return self.load_default()
+
 
 class EntityRepository(ABC):
     @abstractmethod
@@ -52,6 +56,12 @@ class EntityRepository(ABC):
     @abstractmethod
     def list_by_location(self, location_id: int) -> List[Entity]:
         raise NotImplementedError
+
+    def list_by_level_band(self, level_min: int, level_max: int) -> List[Entity]:
+        """Optional helper; default falls back to list_for_level with midpoint."""
+        target = (level_min + level_max) // 2
+        tolerance = max(level_max - target, 0)
+        return self.list_for_level(target_level=target, tolerance=tolerance)
 
 
 class LocationRepository(ABC):

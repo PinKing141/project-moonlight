@@ -1,6 +1,6 @@
-import random
 
 from rpg.presentation.menu_controls import arrow_menu, clear_screen
+from rpg.application.services.encounter_flavour import random_intro
 
 
 def run_game_loop(game_service, character_id: int):
@@ -13,13 +13,32 @@ def run_game_loop(game_service, character_id: int):
 
         clear_screen()
         print("=== WORLD ===")
-        print(f"You stand in the Starting Town. HP: {char.hp_current}/{char.hp_max}")
+        world = getattr(game_service, "world_repo", None)
+        world_state = world.load_default() if world else None
+        title_bits = []
+        if char.race:
+            title_bits.append(char.race)
+        if char.class_name:
+            title_bits.append(char.class_name.title())
+        descriptor = " ".join(title_bits) if title_bits else "Adventurer"
+        diff_label = getattr(char, "difficulty", "normal")
+        world_line = (
+            f"Day {world_state.current_turn} – Threat: {getattr(world_state, 'threat_level', 0)}"
+            if world_state
+            else "Day ? – Threat: ?"
+        )
+        print(f"{world_line}")
+        print(f"{char.name} the {descriptor} | Difficulty: {diff_label.title()} | HP: {char.hp_current}/{char.hp_max}")
         print("")
         choice = arrow_menu("WHAT DO YOU DO?", ["Rest", "Explore", "Quit"])
 
         if choice == 0:
-            char.hp_current = char.hp_max
-            game_service.character_repo.save(char)
+            try:
+                rested_char, _ = game_service.rest(char.id)
+                char = rested_char
+            except Exception:
+                char.hp_current = min(char.hp_current + 4, char.hp_max)
+                game_service.character_repo.save(char)
             print("You rest and feel restored.")
             input("Press ENTER to continue...")
 
@@ -38,24 +57,48 @@ def _run_explore(game_service, char):
         input("Press ENTER to continue...")
         return
 
-    encounter = encounter_service.find_encounter(char.location_id or 0, char.level)
-    if encounter is None:
-        print("The path is quiet. Nothing stirs.")
+    try:
+        encounter, character, world = game_service.explore(char.id)
+    except Exception:
+        encounter = []
+        character = char
+        world = None
+
+    if not encounter:
+        print("You find nothing of interest today.")
         input("Press ENTER to continue...")
         return
 
-    rng = random.Random(char.level + encounter.id)
-    player_damage = max(rng.randint(char.attack_min, char.attack_max) - encounter.armor, 1)
-    enemy_hp = max(encounter.hp - player_damage, 0)
+    if not getattr(game_service, "combat_service", None):
+        print("You spot danger but your combat system is not ready yet.")
+        input("Press ENTER to continue...")
+        return
 
-    enemy_damage = max(rng.randint(encounter.attack_min, encounter.attack_max) - char.armor, 1)
-    char.hp_current = max(char.hp_current - enemy_damage, 0)
-    game_service.character_repo.save(char)
+    logs = []
+    player = character
+    player_survived = True
 
-    print(f"You face a {encounter.name}!")
-    print(f"You strike for {player_damage} damage. {encounter.name} has {enemy_hp} HP left.")
-    print(f"The {encounter.name} hits back for {enemy_damage}. Your HP is {char.hp_current}/{char.hp_max}.")
+    for idx, enemy in enumerate(encounter, start=1):
+        intro = random_intro(enemy)
+        logs.append(intro)
+        result = game_service.combat_service.fight_simple(player, enemy)
+        logs.append(f"--- Enemy {idx}: {enemy.name} ---")
+        logs.extend(entry.text for entry in result.log)
+        player = result.player
+        if not result.player_won:
+            player_survived = False
+            break
 
-    if char.hp_current <= 0:
-        print("You have fallen! The adventure ends here.")
+    player.alive = player.hp_current > 0
+    game_service.character_repo.save(player)
+
+    clear_screen()
+    print("=== Encounter ===")
+    for line in logs:
+        print(line)
+    print("")
+    if player_survived:
+        print("You survive the encounter.")
+    else:
+        print("You black out and wake up later...")
     input("Press ENTER to continue...")

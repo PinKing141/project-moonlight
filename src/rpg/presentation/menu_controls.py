@@ -75,7 +75,7 @@ def arrow_menu(title: str, options: list[str]) -> int:
 
         print("")
         print("-" * 40)
-        print("Use ↑ / ↓ to move, ENTER to select.")
+        print("Use arrow keys to move, ENTER to select, ESC to cancel.")
         print("-" * 40)
 
         key = read_key()

@@ -1,5 +1,5 @@
 import json
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from sqlalchemy import bindparam, text
 
@@ -18,6 +18,22 @@ from rpg.domain.repositories import (
 from .connection import SessionLocal
 
 
+DEFAULT_CLASS_BASE_ATTRIBUTES: Dict[str, Dict[str, int]] = {
+    "barbarian": {"STR": 15, "DEX": 12, "CON": 14, "INT": 8, "WIS": 10, "CHA": 10},
+    "bard": {"STR": 10, "DEX": 12, "CON": 12, "INT": 12, "WIS": 10, "CHA": 15},
+    "cleric": {"STR": 12, "DEX": 10, "CON": 13, "INT": 10, "WIS": 15, "CHA": 11},
+    "druid": {"STR": 10, "DEX": 12, "CON": 13, "INT": 12, "WIS": 15, "CHA": 10},
+    "fighter": {"STR": 15, "DEX": 12, "CON": 14, "INT": 10, "WIS": 10, "CHA": 10},
+    "monk": {"STR": 12, "DEX": 15, "CON": 12, "INT": 10, "WIS": 14, "CHA": 10},
+    "paladin": {"STR": 15, "DEX": 10, "CON": 14, "INT": 10, "WIS": 12, "CHA": 14},
+    "ranger": {"STR": 13, "DEX": 15, "CON": 13, "INT": 10, "WIS": 12, "CHA": 10},
+    "rogue": {"STR": 10, "DEX": 16, "CON": 12, "INT": 12, "WIS": 10, "CHA": 12},
+    "sorcerer": {"STR": 8, "DEX": 12, "CON": 12, "INT": 12, "WIS": 10, "CHA": 16},
+    "warlock": {"STR": 10, "DEX": 12, "CON": 12, "INT": 12, "WIS": 12, "CHA": 16},
+    "wizard": {"STR": 8, "DEX": 12, "CON": 12, "INT": 16, "WIS": 12, "CHA": 10},
+}
+
+
 def _default_stats_for_level(level: int) -> tuple[int, int, int, int]:
     scaled_level = max(level, 1)
     hp = 6 + scaled_level * 3
@@ -25,6 +41,13 @@ def _default_stats_for_level(level: int) -> tuple[int, int, int, int]:
     attack_max = 2 + scaled_level
     armor = max(scaled_level // 3, 0)
     return hp, attack_min, attack_max, armor
+
+
+def _default_combat_fields(level: int) -> tuple[int, int, str]:
+    ac = max(10, 10 + level // 2)
+    attack_bonus = 2 + level // 2
+    damage_die = "d6" if level < 3 else "d8"
+    return ac, attack_bonus, damage_die
 
 
 class MysqlClassRepository(ClassRepository):
@@ -50,6 +73,7 @@ class MysqlClassRepository(ClassRepository):
                         slug=slug,
                         hit_die=row.hit_die,
                         primary_ability=row.primary_ability,
+                        base_attributes=DEFAULT_CLASS_BASE_ATTRIBUTES.get(slug, {}),
                     )
                 )
             return classes
@@ -78,6 +102,7 @@ class MysqlClassRepository(ClassRepository):
                 slug=row.open5e_slug or row.name.lower(),
                 hit_die=row.hit_die,
                 primary_ability=row.primary_ability,
+                base_attributes=DEFAULT_CLASS_BASE_ATTRIBUTES.get(slug_key, {}),
             )
 
 
@@ -361,6 +386,9 @@ class MysqlEntityRepository(EntityRepository):
     def list_for_level(self, target_level: int, tolerance: int = 2) -> List[Entity]:
         lower = target_level - tolerance
         upper = target_level + tolerance
+        return self.list_by_level_band(lower, upper)
+
+    def list_by_level_band(self, level_min: int, level_max: int) -> List[Entity]:
         with SessionLocal() as session:
             rows = session.execute(
                 text(
@@ -370,21 +398,27 @@ class MysqlEntityRepository(EntityRepository):
                     WHERE level BETWEEN :low AND :high
                     """
                 ),
-                {"low": lower, "high": upper},
+                {"low": level_min, "high": level_max},
             ).all()
             entities: List[Entity] = []
             for row in rows:
                 level = row.level or 1
                 hp, attack_min, attack_max, armor = _default_stats_for_level(level)
+                ac, attack_bonus, damage_die = _default_combat_fields(level)
                 entities.append(
                     Entity(
                         id=row.entity_id,
                         name=row.name,
                         level=level,
                         hp=hp,
+                        hp_current=hp,
+                        hp_max=hp,
                         attack_min=attack_min,
                         attack_max=attack_max,
                         armor=armor,
+                        armour_class=ac,
+                        attack_bonus=attack_bonus,
+                        damage_die=damage_die,
                         tags=[],
                     )
                 )
@@ -408,15 +442,21 @@ class MysqlEntityRepository(EntityRepository):
             for row in rows:
                 level = row.level or 1
                 hp, attack_min, attack_max, armor = _default_stats_for_level(level)
+                ac, attack_bonus, damage_die = _default_combat_fields(level)
                 entities.append(
                     Entity(
                         id=row.entity_id,
                         name=row.name,
                         level=level,
                         hp=hp,
+                        hp_current=hp,
+                        hp_max=hp,
                         attack_min=attack_min,
                         attack_max=attack_max,
                         armor=armor,
+                        armour_class=ac,
+                        attack_bonus=attack_bonus,
+                        damage_die=damage_die,
                         tags=[],
                     )
                 )
@@ -442,15 +482,21 @@ class MysqlEntityRepository(EntityRepository):
             for row in rows:
                 level = row.level or 1
                 hp, attack_min, attack_max, armor = _default_stats_for_level(level)
+                ac, attack_bonus, damage_die = _default_combat_fields(level)
                 entities.append(
                     Entity(
                         id=row.entity_id,
                         name=row.name,
                         level=level,
                         hp=hp,
+                        hp_current=hp,
+                        hp_max=hp,
                         attack_min=attack_min,
                         attack_max=attack_max,
                         armor=armor,
+                        armour_class=ac,
+                        attack_bonus=attack_bonus,
+                        damage_die=damage_die,
                         tags=[],
                     )
                 )

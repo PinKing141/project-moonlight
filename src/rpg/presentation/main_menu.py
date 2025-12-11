@@ -33,5 +33,5 @@ def main_menu(game_service: GameService) -> None:
 
         elif choice_idx == 4 or choice_idx == -1:  # Quit or ESC
             clear_screen()
-            print("Goodbye.")
+            print("Ciao Adventurer!!!")
             break

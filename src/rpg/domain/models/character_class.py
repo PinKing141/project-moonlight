@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Dict
 
 
 @dataclass
@@ -8,3 +9,4 @@ class CharacterClass:
     slug: str
     hit_die: str = "d8"
     primary_ability: str | None = None
+    base_attributes: Dict[str, int] = field(default_factory=dict)
