@@ -1,10 +1,17 @@
 from typing import Dict, List, Optional
 
 from rpg.domain.models.character import Character
+from rpg.domain.models.character_class import CharacterClass
 from rpg.domain.models.entity import Entity
 from rpg.domain.models.location import Location
 from rpg.domain.models.world import World
-from rpg.domain.repositories import CharacterRepository, EntityRepository, LocationRepository, WorldRepository
+from rpg.domain.repositories import (
+    CharacterRepository,
+    ClassRepository,
+    EntityRepository,
+    LocationRepository,
+    WorldRepository,
+)
 
 
 class InMemoryWorldRepository(WorldRepository):
@@ -81,3 +88,18 @@ class InMemoryLocationRepository(LocationRepository):
             return None
         first_id = sorted(self._locations.keys())[0]
         return self._locations[first_id]
+
+
+class InMemoryClassRepository(ClassRepository):
+    def __init__(self, classes: List[CharacterClass]) -> None:
+        self._classes = list(classes)
+
+    def list_playable(self) -> List[CharacterClass]:
+        return sorted(self._classes, key=lambda cls: cls.name.lower())
+
+    def get_by_slug(self, slug: str) -> Optional[CharacterClass]:
+        slug_key = slug.lower().strip()
+        for cls in self._classes:
+            if cls.slug.lower() == slug_key:
+                return cls
+        return None

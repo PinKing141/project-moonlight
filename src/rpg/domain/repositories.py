@@ -5,6 +5,7 @@ from rpg.domain.models.character import Character
 from rpg.domain.models.entity import Entity
 from rpg.domain.models.location import Location
 from rpg.domain.models.world import World
+from rpg.domain.models.character_class import CharacterClass
 
 
 class CharacterRepository(ABC):
@@ -64,4 +65,14 @@ class LocationRepository(ABC):
 
     @abstractmethod
     def get_starting_location(self) -> Optional[Location]:
+        raise NotImplementedError
+
+
+class ClassRepository(ABC):
+    @abstractmethod
+    def list_playable(self) -> List[CharacterClass]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_by_slug(self, slug: str) -> Optional[CharacterClass]:
         raise NotImplementedError
