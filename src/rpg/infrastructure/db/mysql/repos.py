@@ -10,6 +10,15 @@ from rpg.domain.repositories import CharacterRepository, EntityRepository, Locat
 from .connection import SessionLocal
 
 
+def _default_stats_for_level(level: int) -> tuple[int, int, int, int]:
+    scaled_level = max(level, 1)
+    hp = 6 + scaled_level * 3
+    attack_min = 1 + scaled_level // 2
+    attack_max = 2 + scaled_level
+    armor = max(scaled_level // 3, 0)
+    return hp, attack_min, attack_max, armor
+
+
 class MysqlCharacterRepository(CharacterRepository):
     def get(self, character_id: int) -> Optional[Character]:
         with SessionLocal() as session:
@@ -133,7 +142,23 @@ class MysqlEntityRepository(EntityRepository):
                 ),
                 {"low": lower, "high": upper},
             ).all()
-            return [Entity(id=row.entity_id, name=row.name, level=row.level or 1) for row in rows]
+            entities: List[Entity] = []
+            for row in rows:
+                level = row.level or 1
+                hp, attack_min, attack_max, armor = _default_stats_for_level(level)
+                entities.append(
+                    Entity(
+                        id=row.entity_id,
+                        name=row.name,
+                        level=level,
+                        hp=hp,
+                        attack_min=attack_min,
+                        attack_max=attack_max,
+                        armor=armor,
+                        tags=[],
+                    )
+                )
+            return entities
 
     def list_by_location(self, location_id: int) -> List[Entity]:
         with SessionLocal() as session:
@@ -148,7 +173,58 @@ class MysqlEntityRepository(EntityRepository):
                 ),
                 {"loc": location_id},
             ).all()
-            return [Entity(id=row.entity_id, name=row.name, level=row.level or 1, tags=[]) for row in rows]
+
+            entities: List[Entity] = []
+            for row in rows:
+                level = row.level or 1
+                hp, attack_min, attack_max, armor = _default_stats_for_level(level)
+                entities.append(
+                    Entity(
+                        id=row.entity_id,
+                        name=row.name,
+                        level=level,
+                        hp=hp,
+                        attack_min=attack_min,
+                        attack_max=attack_max,
+                        armor=armor,
+                        tags=[],
+                    )
+                )
+            return entities
+
+    def get_many(self, entity_ids: List[int]) -> List[Entity]:
+        if not entity_ids:
+            return []
+
+        with SessionLocal() as session:
+            rows = session.execute(
+                text(
+                    """
+                    SELECT entity_id, name, level
+                    FROM entity
+                    WHERE entity_id IN :ids
+                    """
+                ),
+                {"ids": tuple(entity_ids)},
+            ).all()
+
+            entities: List[Entity] = []
+            for row in rows:
+                level = row.level or 1
+                hp, attack_min, attack_max, armor = _default_stats_for_level(level)
+                entities.append(
+                    Entity(
+                        id=row.entity_id,
+                        name=row.name,
+                        level=level,
+                        hp=hp,
+                        attack_min=attack_min,
+                        attack_max=attack_max,
+                        armor=armor,
+                        tags=[],
+                    )
+                )
+            return entities
 
 
 class MysqlWorldRepository(WorldRepository):

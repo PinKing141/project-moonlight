@@ -37,6 +37,12 @@ class InMemoryEntityRepository(EntityRepository):
         self._entities = list(entities)
         self._by_location: Dict[int, List[int]] = {}
 
+    def get_many(self, entity_ids: List[int]) -> List[Entity]:
+        if not entity_ids:
+            return []
+        ids = set(entity_ids)
+        return [e for e in self._entities if e.id in ids]
+
     def list_for_level(self, target_level: int, tolerance: int = 2) -> List[Entity]:
         lower = target_level - tolerance
         upper = target_level + tolerance
