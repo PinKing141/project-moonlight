@@ -24,6 +24,10 @@ class CharacterRepository(ABC):
     def find_by_location(self, location_id: int) -> List[Character]:
         raise NotImplementedError
 
+    @abstractmethod
+    def create(self, character: Character, location_id: int) -> Character:
+        raise NotImplementedError
+
 
 class WorldRepository(ABC):
     @abstractmethod
@@ -56,4 +60,8 @@ class LocationRepository(ABC):
 
     @abstractmethod
     def list_all(self) -> List[Location]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_starting_location(self) -> Optional[Location]:
         raise NotImplementedError

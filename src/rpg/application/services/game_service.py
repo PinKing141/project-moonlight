@@ -119,7 +119,10 @@ class GameService:
     ) -> str:
         monster_hp = monster.hp
 
-        player_strike = rng.randint(character.attack_min, character.attack_max) + character.attributes.get("might", 0)
+        might = character.attributes.get("might", 0)
+        strength = character.attributes.get("strength", 0)
+        attribute_bonus = strength if strength else might
+        player_strike = rng.randint(character.attack_min, character.attack_max) + attribute_bonus
         effective_player_damage = max(player_strike - monster.armor, 1)
         monster_hp -= effective_player_damage
 
