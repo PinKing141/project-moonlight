@@ -43,15 +43,14 @@ def _bootstrap_inmemory() -> tuple[GameService, CharacterCreationService]:
     char_repo = InMemoryCharacterRepository({})
     class_repo = InMemoryClassRepository(
         [
-            CharacterClass(id=1, name="Fighter", slug="fighter", hit_die="d10", primary_ability="strength", source="local"),
-            CharacterClass(id=2, name="Rogue", slug="rogue", hit_die="d8", primary_ability="dexterity", source="local"),
+            CharacterClass(id=1, name="Fighter", slug="fighter", hit_die="d10", primary_ability="strength"),
+            CharacterClass(id=2, name="Rogue", slug="rogue", hit_die="d8", primary_ability="dexterity"),
             CharacterClass(
                 id=3,
                 name="Wizard",
                 slug="wizard",
                 hit_die="d6",
                 primary_ability="intelligence",
-                source="local",
             ),
         ]
     )
@@ -119,7 +118,7 @@ def _bootstrap_inmemory() -> tuple[GameService, CharacterCreationService]:
     )
     progression = WorldProgression(world_repo, entity_repo, event_bus)
 
-    creation_service = CharacterCreationService(char_repo, location_repo, class_repo)
+    creation_service = CharacterCreationService(char_repo, class_repo, location_repo)
 
     return (
         GameService(
@@ -142,7 +141,7 @@ def _bootstrap_mysql() -> tuple[GameService, CharacterCreationService]:
     _ensure_mysql_seed()
     progression = WorldProgression(world_repo, entity_repo, event_bus)
 
-    creation_service = CharacterCreationService(char_repo, location_repo, class_repo)
+    creation_service = CharacterCreationService(char_repo, class_repo, location_repo)
 
     return (
         GameService(
@@ -236,7 +235,7 @@ def run_character_creator(character_creation_service: CharacterCreationService) 
     print("=== Character Creation ===")
     name = input("Enter your character's name: ").strip()
 
-    available = character_creation_service.list_playable_classes()
+    available = character_creation_service.list_classes()
     for idx, cls in enumerate(available, start=1):
         ability = f" ({cls.primary_ability})" if cls.primary_ability else ""
         print(f"{idx}) {cls.name}{ability}")
@@ -246,7 +245,7 @@ def run_character_creator(character_creation_service: CharacterCreationService) 
     selected_idx = max(0, min(selected_idx, len(available) - 1))
     chosen = available[selected_idx]
 
-    character = character_creation_service.create_character(name, chosen.slug)
+    character = character_creation_service.create_character(name, selected_idx)
 
     print(f"\nCreated {character.name}, a level {character.level} {chosen.name}")
     print(f"HP: {character.hp_current}/{character.hp_max}")

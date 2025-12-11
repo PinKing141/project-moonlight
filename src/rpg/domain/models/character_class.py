@@ -1,12 +1,10 @@
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
 class CharacterClass:
-    id: Optional[int]
+    id: int | None
     name: str
     slug: str
-    hit_die: Optional[str] = None
-    primary_ability: Optional[str] = None
-    source: Optional[str] = None
+    hit_die: str = "d8"
+    primary_ability: str | None = None

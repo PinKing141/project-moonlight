@@ -7,23 +7,38 @@ from rpg.domain.events import MonsterSlain
 from rpg.domain.models.character import Character
 from rpg.domain.models.entity import Entity
 from rpg.domain.models.location import Location
-from rpg.domain.repositories import CharacterRepository, EntityRepository, LocationRepository, WorldRepository
+from rpg.domain.repositories import (
+    CharacterRepository,
+    ClassRepository,
+    EntityRepository,
+    LocationRepository,
+    WorldRepository,
+)
 
 
 class GameService:
     def __init__(
         self,
         character_repo: CharacterRepository,
-        entity_repo: EntityRepository,
-        location_repo: LocationRepository,
-        world_repo: WorldRepository,
-        progression: WorldProgression,
+        entity_repo: EntityRepository | None = None,
+        location_repo: LocationRepository | None = None,
+        world_repo: WorldRepository | None = None,
+        progression: WorldProgression | None = None,
+        class_repo: ClassRepository | None = None,
     ) -> None:
+        from rpg.application.services.character_creation_service import CharacterCreationService
+
         self.character_repo = character_repo
         self.entity_repo = entity_repo
         self.location_repo = location_repo
         self.world_repo = world_repo
         self.progression = progression
+        self.character_creation_service = None
+
+        if class_repo and location_repo:
+            self.character_creation_service = CharacterCreationService(
+                character_repo, class_repo, location_repo
+            )
 
     def get_player_view(self, player_id: int) -> str:
         world = self._require_world()

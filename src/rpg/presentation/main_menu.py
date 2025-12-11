@@ -1,4 +1,3 @@
-from rpg.application.services.character_creation_service import CharacterCreationService
 from rpg.application.services.game_service import GameService
 from rpg.presentation.character_creation_ui import run_character_creation
 from rpg.presentation.game_loop import run_game_loop
@@ -6,14 +5,14 @@ from rpg.presentation.load_menu import choose_existing_character
 from rpg.presentation.menu_controls import arrow_menu, clear_screen
 
 
-def main_menu(game_service: GameService, creation_service: CharacterCreationService) -> None:
+def main_menu(game_service: GameService) -> None:
     options = ["New Game", "Continue", "Settings", "Credits", "Quit"]
 
     while True:
         choice_idx = arrow_menu("REALM OF BROKEN STARS", options)
 
         if choice_idx == 0:  # New Game
-            character_id = run_character_creation(creation_service)
+            character_id = run_character_creation(game_service)
             if character_id is not None:
                 run_game_loop(game_service, character_id)
 
