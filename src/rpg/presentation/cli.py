@@ -22,11 +22,6 @@ from rpg.infrastructure.db.mysql.repos import (
     MysqlLocationRepository,
     MysqlWorldRepository,
 )
-from rpg.presentation.main_menu import main_menu
-from sqlalchemy import text
-
-
-PLAYER_ID = 1
 
 
 def _bootstrap() -> tuple[GameService, CharacterCreationService]:
@@ -234,12 +229,50 @@ def _ensure_mysql_seed() -> None:
 
 def main() -> None:
     game, creator = _bootstrap()
-    existing = game.character_repo.get(PLAYER_ID)
-    player_id = PLAYER_ID
+    while True:
+        player_id = _main_menu(game, creator)
+        if player_id is None:
+            print("Goodbye.")
+            break
 
-    if existing is None:
-        player_id = run_character_creator(creator)
+        _run_game_loop(game, player_id)
 
+
+def _main_menu(
+    game: GameService, creation_service: CharacterCreationService
+) -> int | None:
+    """Allow the player to pick an existing character or create a new one."""
+
+    while True:
+        characters = game.list_characters()
+
+        print("=== MAIN MENU ===")
+        if characters:
+            print("Select a character to continue:")
+            for idx, char in enumerate(characters, start=1):
+                status = " (DEAD)" if not char.alive else ""
+                print(
+                    f"  {idx}) {char.name} — level {char.level} "
+                    f"{char.class_name or 'Adventurer'}{status}"
+                )
+            print("  N) Create new character")
+            print("  Q) Quit")
+
+            choice = input("> ").strip().lower()
+            if choice == "q":
+                return None
+            if choice == "n":
+                return run_character_creator(creation_service)
+            if choice.isdigit() and 1 <= int(choice) <= len(characters):
+                return characters[int(choice) - 1].id or 0
+
+            print("Invalid choice. Try again.\n")
+        else:
+            print("No characters found. Let's create a new hero!\n")
+            return run_character_creator(creation_service)
+
+
+def _run_game_loop(game: GameService, player_id: int) -> None:
     game_over = False
     while not game_over:
         view = game.get_player_view(player_id)
