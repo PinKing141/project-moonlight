@@ -1,5 +1,3 @@
-import os
-
 from sqlalchemy import text
 
 from rpg.application.services.event_bus import EventBus
@@ -27,8 +25,14 @@ PLAYER_ID = 1
 
 
 def _bootstrap() -> GameService:
-    if os.getenv("RPG_DATABASE_URL"):
+    try:
         return _bootstrap_mysql()
+    except Exception as exc:  # pragma: no cover - safety fallback
+        print(f"MySQL bootstrap failed ({exc}); falling back to in-memory state.")
+    return _bootstrap_inmemory()
+
+
+def _bootstrap_inmemory() -> GameService:
     event_bus = EventBus()
     world_repo = InMemoryWorldRepository(seed=42)
     char_repo = InMemoryCharacterRepository(
@@ -141,6 +145,17 @@ def _bootstrap_mysql() -> GameService:
 def _ensure_mysql_seed() -> None:
     """Ensure minimal data exists for the CLI to run against MySQL."""
     with SessionLocal() as session:
+        world_id = session.execute(text("SELECT world_id FROM world LIMIT 1")).scalar()
+        if not world_id:
+            session.execute(
+                text(
+                    """
+                    INSERT INTO world (name, current_turn, threat_level, flags)
+                    VALUES ('Default World', 0, 0, '{}')
+                    """
+                )
+            )
+
         place_id = session.execute(text("SELECT place_id FROM place LIMIT 1")).scalar()
         if not place_id:
             session.execute(text("INSERT INTO place (name) VALUES (:name)"), {"name": "Old Ruins"})
