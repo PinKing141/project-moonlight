@@ -13,6 +13,10 @@ class CharacterRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def list_all(self) -> List[Character]:
+        raise NotImplementedError
+
+    @abstractmethod
     def save(self, character: Character) -> None:
         raise NotImplementedError
 

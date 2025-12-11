@@ -1,5 +1,6 @@
 import json
 from typing import List, Optional
+
 from sqlalchemy import bindparam, text
 
 from rpg.domain.models.character import Character
@@ -58,21 +59,52 @@ class MysqlCharacterRepository(CharacterRepository):
                 attributes=attributes,
             )
 
+    def list_all(self) -> List[Character]:
+        with SessionLocal() as session:
+            rows = session.execute(
+                text(
+                    """
+                    SELECT c.character_id, c.name, c.alive, c.level, c.xp, c.money,
+                           c.character_type_id, c.hp_current, c.hp_max, cl.location_id
+                    FROM `character` c
+                    LEFT JOIN character_location cl ON cl.character_id = c.character_id
+                    ORDER BY c.character_id
+                    """
+                )
+            ).all()
+
+            return [
+                Character(
+                    id=row.character_id,
+                    name=row.name,
+                    alive=bool(row.alive),
+                    level=row.level,
+                    xp=row.xp,
+                    money=row.money,
+                    character_type_id=row.character_type_id,
+                    location_id=row.location_id or 0,
+                    hp_current=row.hp_current,
+                    hp_max=row.hp_max,
+                )
+                for row in rows
+            ]
+
     def save(self, character: Character) -> None:
         with SessionLocal() as session:
             session.execute(
                 text(
                     """
-                    UPDATE `character`
-                    SET name = :name,
-                        alive = :alive,
-                        level = :level,
-                        xp = :xp,
-                        money = :money,
-                        character_type_id = :ctype,
-                        hp_current = :hp_current,
-                        hp_max = :hp_max
-                    WHERE character_id = :cid
+                    INSERT INTO `character` (character_id, name, alive, level, xp, money, character_type_id, hp_current, hp_max)
+                    VALUES (:cid, :name, :alive, :level, :xp, :money, :ctype, :hp_current, :hp_max)
+                    ON DUPLICATE KEY UPDATE
+                        name = VALUES(name),
+                        alive = VALUES(alive),
+                        level = VALUES(level),
+                        xp = VALUES(xp),
+                        money = VALUES(money),
+                        character_type_id = VALUES(character_type_id),
+                        hp_current = VALUES(hp_current),
+                        hp_max = VALUES(hp_max)
                     """
                 ),
                 {

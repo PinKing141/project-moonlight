@@ -19,6 +19,7 @@ from rpg.infrastructure.db.mysql.repos import (
     MysqlLocationRepository,
     MysqlWorldRepository,
 )
+from rpg.presentation.main_menu import main_menu
 
 
 PLAYER_ID = 1
@@ -112,7 +113,9 @@ def _bootstrap_inmemory() -> tuple[GameService, CharacterCreationService]:
         ),
         creation_service,
     )
+    creation_service = CharacterCreationService(char_repo, location_repo)
 
+    return game_service, creation_service
 
 def _bootstrap_mysql() -> tuple[GameService, CharacterCreationService]:
     event_bus = EventBus()
@@ -135,6 +138,9 @@ def _bootstrap_mysql() -> tuple[GameService, CharacterCreationService]:
         ),
         creation_service,
     )
+    creation_service = CharacterCreationService(char_repo, location_repo)
+
+    return game_service, creation_service
 
 
 def _ensure_mysql_seed() -> None:

@@ -25,6 +25,9 @@ class InMemoryCharacterRepository(CharacterRepository):
     def get(self, character_id: int) -> Character | None:
         return self._characters.get(character_id)
 
+    def list_all(self) -> List[Character]:
+        return list(self._characters.values())
+
     def save(self, character: Character) -> None:
         self._characters[character.id] = character
 
