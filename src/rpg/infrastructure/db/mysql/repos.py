@@ -1,6 +1,6 @@
 import json
 from typing import List, Optional
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from rpg.domain.models.character import Character
 from rpg.domain.models.entity import Entity
@@ -204,8 +204,8 @@ class MysqlEntityRepository(EntityRepository):
                     FROM entity
                     WHERE entity_id IN :ids
                     """
-                ),
-                {"ids": tuple(entity_ids)},
+                ).bindparams(bindparam("ids", expanding=True)),
+                {"ids": entity_ids},
             ).all()
 
             entities: List[Entity] = []
