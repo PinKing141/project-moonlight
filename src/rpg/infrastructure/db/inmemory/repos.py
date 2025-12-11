@@ -31,6 +31,13 @@ class InMemoryCharacterRepository(CharacterRepository):
     def find_by_location(self, location_id: int) -> List[Character]:
         return [c for c in self._characters.values() if c.location_id == location_id]
 
+    def create(self, character: Character, location_id: int) -> Character:
+        next_id = max(self._characters.keys(), default=0) + 1
+        character.id = next_id
+        character.location_id = location_id
+        self._characters[next_id] = character
+        return character
+
 
 class InMemoryEntityRepository(EntityRepository):
     def __init__(self, entities: List[Entity]) -> None:
@@ -65,3 +72,9 @@ class InMemoryLocationRepository(LocationRepository):
 
     def list_all(self) -> List[Location]:
         return list(self._locations.values())
+
+    def get_starting_location(self) -> Optional[Location]:
+        if not self._locations:
+            return None
+        first_id = sorted(self._locations.keys())[0]
+        return self._locations[first_id]
