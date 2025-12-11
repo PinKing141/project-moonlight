@@ -9,10 +9,12 @@ from rpg.application.services.world_progression import WorldProgression
 from rpg.domain.events import TickAdvanced
 from rpg.domain.models.character import Character
 from rpg.domain.models.entity import Entity
+from rpg.domain.models.character_class import CharacterClass
 from rpg.domain.models.location import Location
 from rpg.domain.models.world import World
 from rpg.infrastructure.db.inmemory.repos import (
     InMemoryCharacterRepository,
+    InMemoryClassRepository,
     InMemoryEntityRepository,
     InMemoryLocationRepository,
     InMemoryWorldRepository,
@@ -105,6 +107,19 @@ class InMemoryLocationRepositoryTests(unittest.TestCase):
 
         self.assertIsNotNone(starting)
         self.assertEqual(1, starting.id)
+
+
+class InMemoryClassRepositoryTests(unittest.TestCase):
+    def test_list_and_get_by_slug(self) -> None:
+        fighter = CharacterClass(id=1, name="Fighter", slug="fighter", hit_die="d10")
+        wizard = CharacterClass(id=2, name="Wizard", slug="wizard", hit_die="d6")
+        repo = InMemoryClassRepository([wizard, fighter])
+
+        listed = repo.list_playable()
+        self.assertEqual([fighter, wizard], listed)
+
+        fetched = repo.get_by_slug("wizard")
+        self.assertEqual(wizard, fetched)
 
 
 if __name__ == "__main__":

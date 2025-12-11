@@ -4,10 +4,12 @@ from rpg.application.services.character_creation_service import CharacterCreatio
 from rpg.application.services.event_bus import EventBus
 from rpg.application.services.game_service import GameService
 from rpg.application.services.world_progression import WorldProgression
+from rpg.domain.models.character_class import CharacterClass
 from rpg.domain.models.entity import Entity
 from rpg.domain.models.location import EncounterTableEntry, Location
 from rpg.infrastructure.db.inmemory.repos import (
     InMemoryCharacterRepository,
+    InMemoryClassRepository,
     InMemoryEntityRepository,
     InMemoryLocationRepository,
     InMemoryWorldRepository,
@@ -15,11 +17,13 @@ from rpg.infrastructure.db.inmemory.repos import (
 from rpg.infrastructure.db.mysql.connection import SessionLocal
 from rpg.infrastructure.db.mysql.repos import (
     MysqlCharacterRepository,
+    MysqlClassRepository,
     MysqlEntityRepository,
     MysqlLocationRepository,
     MysqlWorldRepository,
 )
 from rpg.presentation.main_menu import main_menu
+from sqlalchemy import text
 
 
 PLAYER_ID = 1
@@ -37,6 +41,20 @@ def _bootstrap_inmemory() -> tuple[GameService, CharacterCreationService]:
     event_bus = EventBus()
     world_repo = InMemoryWorldRepository(seed=42)
     char_repo = InMemoryCharacterRepository({})
+    class_repo = InMemoryClassRepository(
+        [
+            CharacterClass(id=1, name="Fighter", slug="fighter", hit_die="d10", primary_ability="strength", source="local"),
+            CharacterClass(id=2, name="Rogue", slug="rogue", hit_die="d8", primary_ability="dexterity", source="local"),
+            CharacterClass(
+                id=3,
+                name="Wizard",
+                slug="wizard",
+                hit_die="d6",
+                primary_ability="intelligence",
+                source="local",
+            ),
+        ]
+    )
     entity_repo = InMemoryEntityRepository(
         [
             Entity(
@@ -101,7 +119,7 @@ def _bootstrap_inmemory() -> tuple[GameService, CharacterCreationService]:
     )
     progression = WorldProgression(world_repo, entity_repo, event_bus)
 
-    creation_service = CharacterCreationService(char_repo, location_repo)
+    creation_service = CharacterCreationService(char_repo, location_repo, class_repo)
 
     return (
         GameService(
@@ -113,20 +131,18 @@ def _bootstrap_inmemory() -> tuple[GameService, CharacterCreationService]:
         ),
         creation_service,
     )
-    creation_service = CharacterCreationService(char_repo, location_repo)
-
-    return game_service, creation_service
 
 def _bootstrap_mysql() -> tuple[GameService, CharacterCreationService]:
     event_bus = EventBus()
     world_repo = MysqlWorldRepository()
     char_repo = MysqlCharacterRepository()
+    class_repo = MysqlClassRepository()
     entity_repo = MysqlEntityRepository()
     location_repo = MysqlLocationRepository()
     _ensure_mysql_seed()
     progression = WorldProgression(world_repo, entity_repo, event_bus)
 
-    creation_service = CharacterCreationService(char_repo, location_repo)
+    creation_service = CharacterCreationService(char_repo, location_repo, class_repo)
 
     return (
         GameService(
@@ -138,9 +154,6 @@ def _bootstrap_mysql() -> tuple[GameService, CharacterCreationService]:
         ),
         creation_service,
     )
-    creation_service = CharacterCreationService(char_repo, location_repo)
-
-    return game_service, creation_service
 
 
 def _ensure_mysql_seed() -> None:
@@ -176,15 +189,25 @@ def _ensure_mysql_seed() -> None:
         if not player_type_id:
             session.execute(text("INSERT INTO character_type (name) VALUES ('player')"))
 
-        for class_name in ("fighter", "rogue", "wizard"):
+        starters = [
+            {"name": "Fighter", "slug": "fighter", "hit_die": "d10", "primary": "strength"},
+            {"name": "Rogue", "slug": "rogue", "hit_die": "d8", "primary": "dexterity"},
+            {"name": "Wizard", "slug": "wizard", "hit_die": "d6", "primary": "intelligence"},
+        ]
+
+        for entry in starters:
             session.execute(
                 text(
                     """
-                    INSERT INTO class (name) VALUES (:name)
-                    ON DUPLICATE KEY UPDATE name = VALUES(name)
+                    INSERT INTO class (name, open5e_slug, hit_die, primary_ability, source)
+                    VALUES (:name, :slug, :hit_die, :primary, 'seed')
+                    ON DUPLICATE KEY UPDATE
+                        hit_die = VALUES(hit_die),
+                        primary_ability = VALUES(primary_ability),
+                        source = VALUES(source)
                     """
                 ),
-                {"name": class_name},
+                entry,
             )
 
         session.commit()
@@ -213,18 +236,19 @@ def run_character_creator(character_creation_service: CharacterCreationService) 
     print("=== Character Creation ===")
     name = input("Enter your character's name: ").strip()
 
-    print("Choose a class:")
-    print("1) Fighter")
-    print("2) Rogue")
-    print("3) Wizard")
+    available = character_creation_service.list_playable_classes()
+    for idx, cls in enumerate(available, start=1):
+        ability = f" ({cls.primary_ability})" if cls.primary_ability else ""
+        print(f"{idx}) {cls.name}{ability}")
 
     choice = input("> ").strip()
-    class_map = {"1": "fighter", "2": "rogue", "3": "wizard"}
-    class_name = class_map.get(choice, "fighter")
+    selected_idx = int(choice) - 1 if choice.isdigit() else 0
+    selected_idx = max(0, min(selected_idx, len(available) - 1))
+    chosen = available[selected_idx]
 
-    character = character_creation_service.create_character(name, class_name)
+    character = character_creation_service.create_character(name, chosen.slug)
 
-    print(f"\nCreated {character.name}, a level {character.level} {class_name.title()}")
+    print(f"\nCreated {character.name}, a level {character.level} {chosen.name}")
     print(f"HP: {character.hp_current}/{character.hp_max}")
     print(f"Starting at location ID {character.location_id}")
     return character.id or 0

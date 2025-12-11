@@ -199,8 +199,13 @@ CREATE TABLE `character_equipment` (
 CREATE TABLE `class` (
     `class_id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT,
     `name` varchar(255) NOT NULL,
+    `hit_die` varchar(8),
+    `primary_ability` varchar(32),
+    `source` varchar(32),
+    `open5e_slug` varchar(128),
     PRIMARY KEY (`class_id`),
-    CONSTRAINT `uk_name` UNIQUE (`name`)
+    CONSTRAINT `uk_name` UNIQUE (`name`),
+    CONSTRAINT `uk_open5e_slug` UNIQUE (`open5e_slug`)
 );
 
 CREATE TABLE `character_class` (

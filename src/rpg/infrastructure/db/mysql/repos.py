@@ -4,10 +4,17 @@ from typing import List, Optional
 from sqlalchemy import bindparam, text
 
 from rpg.domain.models.character import Character
+from rpg.domain.models.character_class import CharacterClass
 from rpg.domain.models.entity import Entity
 from rpg.domain.models.location import Location
 from rpg.domain.models.world import World
-from rpg.domain.repositories import CharacterRepository, EntityRepository, LocationRepository, WorldRepository
+from rpg.domain.repositories import (
+    CharacterRepository,
+    ClassRepository,
+    EntityRepository,
+    LocationRepository,
+    WorldRepository,
+)
 from .connection import SessionLocal
 
 
@@ -18,6 +25,62 @@ def _default_stats_for_level(level: int) -> tuple[int, int, int, int]:
     attack_max = 2 + scaled_level
     armor = max(scaled_level // 3, 0)
     return hp, attack_min, attack_max, armor
+
+
+class MysqlClassRepository(ClassRepository):
+    def list_playable(self) -> List[CharacterClass]:
+        with SessionLocal() as session:
+            rows = session.execute(
+                text(
+                    """
+                    SELECT class_id, name, open5e_slug, hit_die, primary_ability, source
+                    FROM class
+                    ORDER BY name
+                    """
+                )
+            ).all()
+
+            classes: List[CharacterClass] = []
+            for row in rows:
+                slug = row.open5e_slug or row.name.lower()
+                classes.append(
+                    CharacterClass(
+                        id=row.class_id,
+                        name=row.name,
+                        slug=slug,
+                        hit_die=row.hit_die,
+                        primary_ability=row.primary_ability,
+                        source=row.source,
+                    )
+                )
+            return classes
+
+    def get_by_slug(self, slug: str) -> Optional[CharacterClass]:
+        slug_key = slug.lower().strip()
+        with SessionLocal() as session:
+            row = session.execute(
+                text(
+                    """
+                    SELECT class_id, name, open5e_slug, hit_die, primary_ability, source
+                    FROM class
+                    WHERE LOWER(open5e_slug) = :slug OR LOWER(name) = :slug
+                    LIMIT 1
+                    """
+                ),
+                {"slug": slug_key},
+            ).first()
+
+            if not row:
+                return None
+
+            return CharacterClass(
+                id=row.class_id,
+                name=row.name,
+                slug=row.open5e_slug or row.name.lower(),
+                hit_die=row.hit_die,
+                primary_ability=row.primary_ability,
+                source=row.source,
+            )
 
 
 class MysqlCharacterRepository(CharacterRepository):
@@ -251,13 +314,28 @@ class MysqlCharacterRepository(CharacterRepository):
 
     def _resolve_class_id(self, session, class_name: str) -> int:
         existing = session.execute(
-            text("SELECT class_id FROM class WHERE name = :name LIMIT 1"),
-            {"name": class_name},
+            text(
+                """
+                SELECT class_id
+                FROM class
+                WHERE LOWER(open5e_slug) = :slug OR LOWER(name) = :slug
+                LIMIT 1
+                """
+            ),
+            {"slug": class_name.lower()},
         ).scalar()
         if existing:
             return existing
+
         result = session.execute(
-            text("INSERT INTO class (name) VALUES (:name)"), {"name": class_name}
+            text(
+                """
+                INSERT INTO class (name, open5e_slug, source)
+                VALUES (:name, :slug, 'local')
+                ON DUPLICATE KEY UPDATE name = VALUES(name)
+                """
+            ),
+            {"name": class_name, "slug": class_name.lower()},
         )
         session.flush()
         return result.lastrowid
