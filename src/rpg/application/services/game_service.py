@@ -44,6 +44,9 @@ class GameService:
             "Actions: explore, rest, quit"
         )
 
+    def list_characters(self) -> list[Character]:
+        return self.character_repo.list_all()
+
     def make_choice(self, player_id: int, choice: str) -> ActionResult:
         choice = choice.strip().lower()
         if choice not in {"explore", "rest", "quit"}:

@@ -1,5 +1,6 @@
 from sqlalchemy import text
 
+from rpg.application.services.character_creation_service import CharacterCreationService
 from rpg.application.services.event_bus import EventBus
 from rpg.application.services.game_service import GameService
 from rpg.application.services.world_progression import WorldProgression
@@ -19,12 +20,13 @@ from rpg.infrastructure.db.mysql.repos import (
     MysqlLocationRepository,
     MysqlWorldRepository,
 )
+from rpg.presentation.main_menu import main_menu
 
 
 PLAYER_ID = 1
 
 
-def _bootstrap() -> GameService:
+def _bootstrap() -> tuple[GameService, CharacterCreationService]:
     try:
         return _bootstrap_mysql()
     except Exception as exc:  # pragma: no cover - safety fallback
@@ -32,7 +34,7 @@ def _bootstrap() -> GameService:
     return _bootstrap_inmemory()
 
 
-def _bootstrap_inmemory() -> GameService:
+def _bootstrap_inmemory() -> tuple[GameService, CharacterCreationService]:
     event_bus = EventBus()
     world_repo = InMemoryWorldRepository(seed=42)
     char_repo = InMemoryCharacterRepository(
@@ -115,16 +117,19 @@ def _bootstrap_inmemory() -> GameService:
     )
     progression = WorldProgression(world_repo, entity_repo, event_bus)
 
-    return GameService(
+    game_service = GameService(
         character_repo=char_repo,
         entity_repo=entity_repo,
         location_repo=location_repo,
         world_repo=world_repo,
         progression=progression,
     )
+    creation_service = CharacterCreationService(char_repo, location_repo)
+
+    return game_service, creation_service
 
 
-def _bootstrap_mysql() -> GameService:
+def _bootstrap_mysql() -> tuple[GameService, CharacterCreationService]:
     event_bus = EventBus()
     world_repo = MysqlWorldRepository()
     char_repo = MysqlCharacterRepository()
@@ -132,14 +137,16 @@ def _bootstrap_mysql() -> GameService:
     location_repo = MysqlLocationRepository()
     _ensure_mysql_seed()
     progression = WorldProgression(world_repo, entity_repo, event_bus)
-
-    return GameService(
+    game_service = GameService(
         character_repo=char_repo,
         entity_repo=entity_repo,
         location_repo=location_repo,
         world_repo=world_repo,
         progression=progression,
     )
+    creation_service = CharacterCreationService(char_repo, location_repo)
+
+    return game_service, creation_service
 
 
 def _ensure_mysql_seed() -> None:
@@ -209,16 +216,8 @@ def _ensure_mysql_seed() -> None:
 
 
 def main() -> None:
-    game = _bootstrap()
-    game_over = False
-    while not game_over:
-        view = game.get_player_view(PLAYER_ID)
-        print(view)
-        choice = input(">>> ")
-        result = game.make_choice(PLAYER_ID, choice)
-        for msg in result.messages:
-            print(msg)
-        game_over = result.game_over
+    game, creation_service = _bootstrap()
+    main_menu(game, creation_service)
 
 
 if __name__ == "__main__":
