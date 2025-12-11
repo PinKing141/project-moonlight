@@ -27,6 +27,7 @@ class GameService:
         class_repo: ClassRepository | None = None,
     ) -> None:
         from rpg.application.services.character_creation_service import CharacterCreationService
+        from rpg.application.services.encounter_service import EncounterService
 
         self.character_repo = character_repo
         self.entity_repo = entity_repo
@@ -34,11 +35,15 @@ class GameService:
         self.world_repo = world_repo
         self.progression = progression
         self.character_creation_service = None
+        self.encounter_service = None
 
         if class_repo and location_repo:
             self.character_creation_service = CharacterCreationService(
                 character_repo, class_repo, location_repo
             )
+
+        if entity_repo:
+            self.encounter_service = EncounterService(entity_repo)
 
     def get_player_view(self, player_id: int) -> str:
         world = self._require_world()
