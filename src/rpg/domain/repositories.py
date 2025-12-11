@@ -33,6 +33,10 @@ class WorldRepository(ABC):
 
 class EntityRepository(ABC):
     @abstractmethod
+    def get_many(self, entity_ids: List[int]) -> List[Entity]:
+        raise NotImplementedError
+
+    @abstractmethod
     def list_for_level(self, target_level: int, tolerance: int = 2) -> List[Entity]:
         raise NotImplementedError
 

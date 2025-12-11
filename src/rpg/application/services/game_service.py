@@ -5,6 +5,8 @@ from rpg.application.dtos import ActionResult
 from rpg.application.services.world_progression import WorldProgression
 from rpg.domain.events import MonsterSlain
 from rpg.domain.models.character import Character
+from rpg.domain.models.entity import Entity
+from rpg.domain.models.location import Location
 from rpg.domain.repositories import CharacterRepository, EntityRepository, LocationRepository, WorldRepository
 
 
@@ -27,9 +29,18 @@ class GameService:
         world = self._require_world()
         character = self._require_character(player_id)
         location = self.location_repo.get(character.location_id)
+
+        location_line = (
+            f"in {location.name} [{location.biome}]"
+            if location
+            else "in an unknown place"
+        )
+        tags = ", ".join(location.tags) if location and location.tags else "quiet"
+        factions = ", ".join(location.factions) if location and location.factions else "unclaimed"
         return (
             f"Turn {world.current_turn}\n"
-            f"You are {character.name} (HP: {character.hp_current}/{character.hp_max}) in {location.name if location else 'Unknown'}.\n"
+            f"You are {character.name} (HP: {character.hp_current}/{character.hp_max}, Armor {character.armor}) {location_line}.\n"
+            f"Local threats: {tags}; influence: {factions}; suggested level {location.recommended_level if location else '?'}\n"
             "Actions: explore, rest, quit"
         )
 
@@ -43,6 +54,7 @@ class GameService:
 
         world = self._require_world()
         character = self._require_character(player_id)
+        location = self.location_repo.get(character.location_id)
 
         if choice == "rest":
             character.hp_current = min(character.hp_current + 2, character.hp_max)
@@ -51,34 +63,98 @@ class GameService:
             return ActionResult(messages=["You rest and feel a bit better."], game_over=False)
 
         # explore
-        encounter_msg = self._run_encounter(character, world)
+        encounter_msg = self._run_encounter(character, world, location)
         self.character_repo.save(character)
         self.progression.tick(world, ticks=1)
         return ActionResult(messages=[encounter_msg], game_over=not character.alive)
 
-    def _run_encounter(self, character: Character, world) -> str:
+    def _run_encounter(self, character: Character, world, location: Optional[Location]) -> str:
+        rng = random.Random(world.rng_seed + world.current_turn + character.location_id)
+        monster = self._pick_monster(character, location, rng)
+        if monster is None:
+            return "The ruins are silent. Nothing happens."
+
+        evade_roll = rng.random()
+        if evade_roll > 0.8:
+            return f"You spot signs of {monster.name} and steer clear before it notices you."
+
+        return self._resolve_combat(character, monster, rng, world, location)
+
+    def _pick_monster(
+        self, character: Character, location: Optional[Location], rng: random.Random
+    ) -> Optional[Entity]:
+        if location and location.encounters:
+            candidates = self.entity_repo.get_many([entry.entity_id for entry in location.encounters])
+            lookup = {entity.id: entity for entity in candidates}
+            weighted: list[tuple[Entity, int]] = []
+            for entry in location.encounters:
+                entity = lookup.get(entry.entity_id)
+                if entity is None:
+                    continue
+                if not (entry.min_level <= character.level <= entry.max_level):
+                    continue
+                weighted.append((entity, max(entry.weight, 1)))
+
+            if weighted:
+                entities, weights = zip(*weighted)
+                return rng.choices(list(entities), weights=list(weights), k=1)[0]
+
         choices = self.entity_repo.list_by_location(character.location_id)
         if not choices:
             choices = self.entity_repo.list_for_level(target_level=character.level)
         if not choices:
-            return "The ruins are silent. Nothing happens."
-        rng = random.Random(world.rng_seed + world.current_turn + character.location_id)
-        monster = rng.choice(choices)
-        roll = rng.random()
-        if roll > 0.4:
-            return "You slip past danger and find nothing of note."
-        if roll > 0.2:
-            return f"You clash with {monster.name} and win!"
-        character.alive = False
-        self.progression.event_bus.publish(
-            MonsterSlain(
-                monster_id=monster.id,
-                location_id=character.location_id,
-                by_character_id=character.id,
-                turn=world.current_turn,
+            return None
+        return rng.choice(choices)
+
+    def _resolve_combat(
+        self,
+        character: Character,
+        monster: Entity,
+        rng: random.Random,
+        world,
+        location: Optional[Location],
+    ) -> str:
+        monster_hp = monster.hp
+
+        player_strike = rng.randint(character.attack_min, character.attack_max) + character.attributes.get("might", 0)
+        effective_player_damage = max(player_strike - monster.armor, 1)
+        monster_hp -= effective_player_damage
+
+        if monster_hp <= 0:
+            xp_gain = max(monster.level * 5, 1)
+            character.xp += xp_gain
+            faction_note = f" for the {monster.faction_id}" if monster.faction_id else ""
+            self.progression.event_bus.publish(
+                MonsterSlain(
+                    monster_id=monster.id,
+                    location_id=character.location_id,
+                    by_character_id=character.id,
+                    turn=world.current_turn,
+                )
             )
+            return (
+                f"You cleave through {monster.name}{faction_note}, dealing {effective_player_damage} damage. "
+                f"It falls. (+{xp_gain} XP)"
+            )
+
+        monster_strike = rng.randint(monster.attack_min, monster.attack_max)
+        damage_taken = max(monster_strike - character.armor, 1)
+        character.hp_current = max(character.hp_current - damage_taken, 0)
+
+        if character.hp_current <= 0:
+            character.alive = False
+            threat = f" from the {monster.faction_id}" if monster.faction_id else ""
+            return (
+                f"{monster.name}{threat} lands a brutal hit for {damage_taken} damage. "
+                "You collapse and darkness closes in."
+            )
+
+        location_note = f" around {location.name}" if location else "" 
+        return (
+            f"You and {monster.name} trade blows{location_note}. "
+            f"You deal {effective_player_damage} damage but take {damage_taken}. "
+            f"{monster.name} still has {monster_hp} HP; you have {character.hp_current}/{character.hp_max}."
         )
-        return f"{monster.name} overpowers you. Darkness closes in."
 
     def _require_world(self):
         world = self.world_repo.load_default()
