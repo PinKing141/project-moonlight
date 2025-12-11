@@ -6,17 +6,18 @@ from typing import Dict, List, Optional
 class Character:
     id: Optional[int]
     name: str
-    location_id: int = 0
-    class_name: Optional[str] = None
-    attack_min: int = 2
-    attack_max: int = 4
-    armor: int = 0
-    hp_current: int = 10
-    hp_max: int = 10
-    alive: bool = True
     level: int = 1
     xp: int = 0
     money: int = 0
+    hp_max: int = 10
+    hp_current: int = 10
+    class_name: Optional[str] = None
+    base_attributes: Dict[str, int] = field(default_factory=dict)
+    location_id: Optional[int] = None
+    attack_min: int = 2
+    attack_max: int = 4
+    armor: int = 0
+    alive: bool = True
     character_type_id: int = 1
     attributes: Dict[str, int] = field(
         default_factory=lambda: {

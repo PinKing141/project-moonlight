@@ -1,17 +1,30 @@
-from rpg.presentation.menu_controls import clear_screen
+from rpg.presentation.menu_controls import arrow_menu, clear_screen
 
 
 def run_game_loop(game_service, character_id: int):
-    game_over = False
-    while not game_over:
+    while True:
         clear_screen()
-        view = game_service.get_player_view(character_id)
-        print(view)
-        choice = input(">>> ")
-        result = game_service.make_choice(character_id, choice)
-        clear_screen()
-        for msg in result.messages:
-            print(msg)
-        if not result.game_over:
+        print("=== WORLD ===")
+        print("You stand in the Starting Town.")
+        print("")
+        choice = arrow_menu("WHAT DO YOU DO?", [
+            "Rest at the inn (heal to full)",
+            "Explore the wilds",
+            "Quit to main menu",
+        ])
+
+        if choice == 0:
+            # rest – just pretend for now
+            char = game_service.character_repo.get(character_id)
+            if char:
+                char.hp_current = char.hp_max
+                game_service.character_repo.save(char)
+            print("You rest and feel restored.")
             input("Press ENTER to continue...")
-        game_over = result.game_over
+
+        elif choice == 1:
+            print("You wander into the unknown... (encounters coming later)")
+            input("Press ENTER to continue...")
+
+        elif choice == 2 or choice == -1:
+            break

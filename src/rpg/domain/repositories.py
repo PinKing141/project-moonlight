@@ -72,7 +72,3 @@ class ClassRepository(ABC):
     @abstractmethod
     def list_playable(self) -> List[CharacterClass]:
         raise NotImplementedError
-
-    @abstractmethod
-    def get_by_slug(self, slug: str) -> Optional[CharacterClass]:
-        raise NotImplementedError

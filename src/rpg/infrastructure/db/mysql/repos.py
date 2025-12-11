@@ -50,7 +50,6 @@ class MysqlClassRepository(ClassRepository):
                         slug=slug,
                         hit_die=row.hit_die,
                         primary_ability=row.primary_ability,
-                        source=row.source,
                     )
                 )
             return classes
@@ -79,7 +78,6 @@ class MysqlClassRepository(ClassRepository):
                 slug=row.open5e_slug or row.name.lower(),
                 hit_die=row.hit_die,
                 primary_ability=row.primary_ability,
-                source=row.source,
             )
 
 
