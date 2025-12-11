@@ -30,4 +30,5 @@ Use MySQL schema + Open5e import:
 
 Next steps:
 - Flesh out domain stats, factions, and encounter tables
+- Add Open5e importer to seed canonical entities
 - Add tests under `tests/`
