@@ -1,9 +1,9 @@
 from sqlalchemy import text
 
+from rpg.application.services.character_creation_service import CharacterCreationService
 from rpg.application.services.event_bus import EventBus
 from rpg.application.services.game_service import GameService
 from rpg.application.services.world_progression import WorldProgression
-from rpg.domain.models.character import Character
 from rpg.domain.models.entity import Entity
 from rpg.domain.models.location import EncounterTableEntry, Location
 from rpg.infrastructure.db.inmemory.repos import (
@@ -24,7 +24,7 @@ from rpg.infrastructure.db.mysql.repos import (
 PLAYER_ID = 1
 
 
-def _bootstrap() -> GameService:
+def _bootstrap() -> tuple[GameService, CharacterCreationService]:
     try:
         return _bootstrap_mysql()
     except Exception as exc:  # pragma: no cover - safety fallback
@@ -32,25 +32,10 @@ def _bootstrap() -> GameService:
     return _bootstrap_inmemory()
 
 
-def _bootstrap_inmemory() -> GameService:
+def _bootstrap_inmemory() -> tuple[GameService, CharacterCreationService]:
     event_bus = EventBus()
     world_repo = InMemoryWorldRepository(seed=42)
-    char_repo = InMemoryCharacterRepository(
-        {
-            PLAYER_ID: Character(
-                id=PLAYER_ID,
-                name="Aria",
-                hp_current=12,
-                hp_max=12,
-                location_id=1,
-                armor=1,
-                attack_min=2,
-                attack_max=5,
-                attributes={"might": 2, "agility": 2, "wit": 1, "spirit": 1},
-                faction_id="wardens",
-            )
-        }
-    )
+    char_repo = InMemoryCharacterRepository({})
     entity_repo = InMemoryEntityRepository(
         [
             Entity(
@@ -115,16 +100,21 @@ def _bootstrap_inmemory() -> GameService:
     )
     progression = WorldProgression(world_repo, entity_repo, event_bus)
 
-    return GameService(
-        character_repo=char_repo,
-        entity_repo=entity_repo,
-        location_repo=location_repo,
-        world_repo=world_repo,
-        progression=progression,
+    creation_service = CharacterCreationService(char_repo, location_repo)
+
+    return (
+        GameService(
+            character_repo=char_repo,
+            entity_repo=entity_repo,
+            location_repo=location_repo,
+            world_repo=world_repo,
+            progression=progression,
+        ),
+        creation_service,
     )
 
 
-def _bootstrap_mysql() -> GameService:
+def _bootstrap_mysql() -> tuple[GameService, CharacterCreationService]:
     event_bus = EventBus()
     world_repo = MysqlWorldRepository()
     char_repo = MysqlCharacterRepository()
@@ -133,12 +123,17 @@ def _bootstrap_mysql() -> GameService:
     _ensure_mysql_seed()
     progression = WorldProgression(world_repo, entity_repo, event_bus)
 
-    return GameService(
-        character_repo=char_repo,
-        entity_repo=entity_repo,
-        location_repo=location_repo,
-        world_repo=world_repo,
-        progression=progression,
+    creation_service = CharacterCreationService(char_repo, location_repo)
+
+    return (
+        GameService(
+            character_repo=char_repo,
+            entity_repo=entity_repo,
+            location_repo=location_repo,
+            world_repo=world_repo,
+            progression=progression,
+        ),
+        creation_service,
     )
 
 
@@ -158,7 +153,7 @@ def _ensure_mysql_seed() -> None:
 
         place_id = session.execute(text("SELECT place_id FROM place LIMIT 1")).scalar()
         if not place_id:
-            session.execute(text("INSERT INTO place (name) VALUES (:name)"), {"name": "Old Ruins"})
+            session.execute(text("INSERT INTO place (name) VALUES (:name)"), {"name": "Starting Town"})
             place_id = session.execute(text("SELECT place_id FROM place LIMIT 1")).scalar()
 
         location_id = session.execute(text("SELECT location_id FROM location LIMIT 1")).scalar()
@@ -167,7 +162,6 @@ def _ensure_mysql_seed() -> None:
                 text("INSERT INTO location (x, y, place_id) VALUES (0, 0, :pid)"),
                 {"pid": place_id},
             )
-            location_id = session.execute(text("SELECT location_id FROM location LIMIT 1")).scalar()
 
         player_type_id = session.execute(
             text("SELECT character_type_id FROM character_type WHERE name = :name LIMIT 1"),
@@ -175,50 +169,59 @@ def _ensure_mysql_seed() -> None:
         ).scalar()
         if not player_type_id:
             session.execute(text("INSERT INTO character_type (name) VALUES ('player')"))
-            player_type_id = session.execute(
-                text("SELECT character_type_id FROM character_type WHERE name = 'player' LIMIT 1")
-            ).scalar()
 
-        character_exists = session.execute(
-            text("SELECT character_id FROM `character` WHERE character_id = :cid"),
-            {"cid": PLAYER_ID},
-        ).scalar()
-        if not character_exists:
+        for class_name in ("fighter", "rogue", "wizard"):
             session.execute(
                 text(
                     """
-                    INSERT INTO `character` (character_id, character_type_id, name, alive, level, xp, money, hp_current, hp_max)
-                    VALUES (:cid, :ctype, :name, 1, 1, 0, 0, 10, 10)
+                    INSERT INTO class (name) VALUES (:name)
+                    ON DUPLICATE KEY UPDATE name = VALUES(name)
                     """
                 ),
-                {"cid": PLAYER_ID, "ctype": player_type_id, "name": "Aria"},
+                {"name": class_name},
             )
-
-        session.execute(
-            text(
-                """
-                INSERT INTO character_location (character_id, location_id)
-                VALUES (:cid, :loc)
-                ON DUPLICATE KEY UPDATE location_id = VALUES(location_id)
-                """
-            ),
-            {"cid": PLAYER_ID, "loc": location_id},
-        )
 
         session.commit()
 
 
 def main() -> None:
-    game = _bootstrap()
+    game, creator = _bootstrap()
+    existing = game.character_repo.get(PLAYER_ID)
+    player_id = PLAYER_ID
+
+    if existing is None:
+        player_id = run_character_creator(creator)
+
     game_over = False
     while not game_over:
-        view = game.get_player_view(PLAYER_ID)
+        view = game.get_player_view(player_id)
         print(view)
         choice = input(">>> ")
-        result = game.make_choice(PLAYER_ID, choice)
+        result = game.make_choice(player_id, choice)
         for msg in result.messages:
             print(msg)
         game_over = result.game_over
+
+
+def run_character_creator(character_creation_service: CharacterCreationService) -> int:
+    print("=== Character Creation ===")
+    name = input("Enter your character's name: ").strip()
+
+    print("Choose a class:")
+    print("1) Fighter")
+    print("2) Rogue")
+    print("3) Wizard")
+
+    choice = input("> ").strip()
+    class_map = {"1": "fighter", "2": "rogue", "3": "wizard"}
+    class_name = class_map.get(choice, "fighter")
+
+    character = character_creation_service.create_character(name, class_name)
+
+    print(f"\nCreated {character.name}, a level {character.level} {class_name.title()}")
+    print(f"HP: {character.hp_current}/{character.hp_max}")
+    print(f"Starting at location ID {character.location_id}")
+    return character.id or 0
 
 
 if __name__ == "__main__":

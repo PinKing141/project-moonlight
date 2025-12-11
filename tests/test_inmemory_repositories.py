@@ -9,10 +9,12 @@ from rpg.application.services.world_progression import WorldProgression
 from rpg.domain.events import TickAdvanced
 from rpg.domain.models.character import Character
 from rpg.domain.models.entity import Entity
+from rpg.domain.models.location import Location
 from rpg.domain.models.world import World
 from rpg.infrastructure.db.inmemory.repos import (
     InMemoryCharacterRepository,
     InMemoryEntityRepository,
+    InMemoryLocationRepository,
     InMemoryWorldRepository,
 )
 
@@ -47,6 +49,16 @@ class InMemoryCharacterRepositoryTests(unittest.TestCase):
         at_location = repo.find_by_location(location_id=2)
         self.assertEqual({1, 3}, {c.id for c in at_location})
 
+    def test_create_assigns_id_and_location(self) -> None:
+        repo = InMemoryCharacterRepository({})
+        character = Character(id=None, name="Newcomer", location_id=0)
+
+        created = repo.create(character, location_id=5)
+
+        self.assertIsNotNone(created.id)
+        self.assertEqual(5, created.location_id)
+        self.assertIn(created.id, repo._characters)
+
 
 class InMemoryWorldRepositoryTests(unittest.TestCase):
     def test_save_and_load_persists_world_state(self) -> None:
@@ -78,6 +90,21 @@ class WorldProgressionTests(unittest.TestCase):
         self.assertEqual(2, world.current_turn)
         self.assertEqual(1, len(events))
         self.assertEqual(2, events[0].turn_after)
+
+
+class InMemoryLocationRepositoryTests(unittest.TestCase):
+    def test_get_starting_location_returns_lowest_id(self) -> None:
+        repo = InMemoryLocationRepository(
+            {
+                2: Location(id=2, name="B", base_level=1),
+                1: Location(id=1, name="A", base_level=1),
+            }
+        )
+
+        starting = repo.get_starting_location()
+
+        self.assertIsNotNone(starting)
+        self.assertEqual(1, starting.id)
 
 
 if __name__ == "__main__":

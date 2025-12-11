@@ -27,9 +27,11 @@ class MysqlCharacterRepository(CharacterRepository):
                     """
                     SELECT c.character_id, c.name, c.alive, c.level, c.xp, c.money,
                            c.character_type_id, c.hp_current, c.hp_max,
-                           cl.location_id
+                           cl.location_id, cls.name AS class_name
                     FROM `character` c
                     LEFT JOIN character_location cl ON cl.character_id = c.character_id
+                    LEFT JOIN character_class cc ON cc.character_id = c.character_id
+                    LEFT JOIN class cls ON cls.class_id = cc.class_id
                     WHERE c.character_id = :cid
                     """
                 ),
@@ -38,6 +40,8 @@ class MysqlCharacterRepository(CharacterRepository):
 
             if not row:
                 return None
+
+            attributes = self._load_attributes(session, row.character_id)
 
             return Character(
                 id=row.character_id,
@@ -50,6 +54,8 @@ class MysqlCharacterRepository(CharacterRepository):
                 location_id=row.location_id or 0,
                 hp_current=row.hp_current,
                 hp_max=row.hp_max,
+                class_name=row.class_name,
+                attributes=attributes,
             )
 
     def save(self, character: Character) -> None:
@@ -101,30 +107,146 @@ class MysqlCharacterRepository(CharacterRepository):
                     """
                     SELECT c.character_id, c.name, c.alive, c.level, c.xp, c.money,
                            c.character_type_id, c.hp_current, c.hp_max,
-                           cl.location_id
+                           cl.location_id, cls.name AS class_name
                     FROM `character` c
                     INNER JOIN character_location cl ON cl.character_id = c.character_id
+                    LEFT JOIN character_class cc ON cc.character_id = c.character_id
+                    LEFT JOIN class cls ON cls.class_id = cc.class_id
                     WHERE cl.location_id = :loc
                     """
                 ),
                 {"loc": location_id},
             ).all()
 
-            return [
-                Character(
-                    id=row.character_id,
-                    name=row.name,
-                    alive=bool(row.alive),
-                    level=row.level,
-                    xp=row.xp,
-                    money=row.money,
-                    character_type_id=row.character_type_id,
-                    location_id=row.location_id,
-                    hp_current=row.hp_current,
-                    hp_max=row.hp_max,
+            characters: List[Character] = []
+            for row in rows:
+                attributes = self._load_attributes(session, row.character_id)
+                characters.append(
+                    Character(
+                        id=row.character_id,
+                        name=row.name,
+                        alive=bool(row.alive),
+                        level=row.level,
+                        xp=row.xp,
+                        money=row.money,
+                        character_type_id=row.character_type_id,
+                        location_id=row.location_id,
+                        hp_current=row.hp_current,
+                        hp_max=row.hp_max,
+                        class_name=row.class_name,
+                        attributes=attributes,
+                    )
                 )
-                for row in rows
-            ]
+            return characters
+
+    def create(self, character: Character, location_id: int) -> Character:
+        with SessionLocal() as session:
+            ctype_id = self._resolve_character_type_id(session)
+            result = session.execute(
+                text(
+                    """
+                    INSERT INTO `character` (character_type_id, name, alive, level, xp, money, hp_current, hp_max)
+                    VALUES (:ctype, :name, 1, :level, :xp, :money, :hp_current, :hp_max)
+                    """
+                ),
+                {
+                    "ctype": ctype_id,
+                    "name": character.name,
+                    "level": character.level,
+                    "xp": character.xp,
+                    "money": character.money,
+                    "hp_current": character.hp_current,
+                    "hp_max": character.hp_max,
+                },
+            )
+            character_id = result.lastrowid
+
+            class_id = self._resolve_class_id(session, character.class_name or "fighter")
+            session.execute(
+                text(
+                    """
+                    INSERT INTO character_class (character_id, class_id)
+                    VALUES (:cid, :class_id)
+                    """
+                ),
+                {"cid": character_id, "class_id": class_id},
+            )
+
+            for attr_name, value in (character.attributes or {}).items():
+                attr_id = self._resolve_attribute_id(session, attr_name)
+                if attr_id is None:
+                    continue
+                session.execute(
+                    text(
+                        """
+                        INSERT INTO character_attribute (character_id, attribute_id, value)
+                        VALUES (:cid, :aid, :val)
+                        ON DUPLICATE KEY UPDATE value = VALUES(value)
+                        """
+                    ),
+                    {"cid": character_id, "aid": attr_id, "val": value},
+                )
+
+            session.execute(
+                text(
+                    """
+                    INSERT INTO character_location (character_id, location_id)
+                    VALUES (:cid, :loc)
+                    """
+                ),
+                {"cid": character_id, "loc": location_id},
+            )
+
+            session.commit()
+            character.id = character_id
+            character.location_id = location_id
+            character.character_type_id = ctype_id
+            return character
+
+    def _load_attributes(self, session, character_id: int) -> dict[str, int]:
+        rows = session.execute(
+            text(
+                """
+                SELECT a.name AS attr_name, ca.value
+                FROM character_attribute ca
+                INNER JOIN attribute a ON a.attribute_id = ca.attribute_id
+                WHERE ca.character_id = :cid
+                """
+            ),
+            {"cid": character_id},
+        ).all()
+        return {row.attr_name: row.value for row in rows}
+
+    def _resolve_class_id(self, session, class_name: str) -> int:
+        existing = session.execute(
+            text("SELECT class_id FROM class WHERE name = :name LIMIT 1"),
+            {"name": class_name},
+        ).scalar()
+        if existing:
+            return existing
+        result = session.execute(
+            text("INSERT INTO class (name) VALUES (:name)"), {"name": class_name}
+        )
+        session.flush()
+        return result.lastrowid
+
+    def _resolve_attribute_id(self, session, attr_name: str) -> Optional[int]:
+        return session.execute(
+            text("SELECT attribute_id FROM attribute WHERE name = :name LIMIT 1"),
+            {"name": attr_name},
+        ).scalar()
+
+    def _resolve_character_type_id(self, session) -> int:
+        existing = session.execute(
+            text("SELECT character_type_id FROM character_type WHERE name = 'player' LIMIT 1")
+        ).scalar()
+        if existing:
+            return existing
+        result = session.execute(
+            text("INSERT INTO character_type (name) VALUES ('player')")
+        )
+        session.flush()
+        return result.lastrowid
 
 
 class MysqlEntityRepository(EntityRepository):
@@ -311,3 +433,20 @@ class MysqlLocationRepository(LocationRepository):
                 )
             ).all()
             return [Location(id=row.location_id, name=row.place_name, base_level=1) for row in rows]
+
+    def get_starting_location(self) -> Optional[Location]:
+        with SessionLocal() as session:
+            row = session.execute(
+                text(
+                    """
+                    SELECT l.location_id, l.x, l.y, p.name AS place_name
+                    FROM location l
+                    INNER JOIN place p ON p.place_id = l.place_id
+                    ORDER BY l.location_id
+                    LIMIT 1
+                    """
+                )
+            ).first()
+            if not row:
+                return None
+            return Location(id=row.location_id, name=row.place_name, base_level=1)
