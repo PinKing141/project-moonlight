@@ -5,6 +5,10 @@ from rpg.application.services.world_progression import WorldProgression
 from rpg.infrastructure.inmemory.inmemory_character_repo import InMemoryCharacterRepository
 from rpg.infrastructure.inmemory.inmemory_class_repo import InMemoryClassRepository
 from rpg.infrastructure.inmemory.inmemory_entity_repo import InMemoryEntityRepository
+from rpg.infrastructure.inmemory.inmemory_encounter_definition_repo import (
+    InMemoryEncounterDefinitionRepository,
+)
+from rpg.infrastructure.inmemory.inmemory_faction_repo import InMemoryFactionRepository
 from rpg.infrastructure.inmemory.inmemory_location_repo import InMemoryLocationRepository
 from rpg.infrastructure.inmemory.inmemory_world_repo import InMemoryWorldRepository
 
@@ -14,6 +18,8 @@ def _build_inmemory_game_service() -> GameService:
     loc_repo = InMemoryLocationRepository()
     cls_repo = InMemoryClassRepository()
     entity_repo = InMemoryEntityRepository()
+    faction_repo = InMemoryFactionRepository()
+    definition_repo = InMemoryEncounterDefinitionRepository()
     world_repo = InMemoryWorldRepository()
 
     return GameService(
@@ -22,6 +28,8 @@ def _build_inmemory_game_service() -> GameService:
         class_repo=cls_repo,
         entity_repo=entity_repo,
         world_repo=world_repo,
+        faction_repo=faction_repo,
+        definition_repo=definition_repo,
     )
 
 
@@ -40,6 +48,8 @@ def _build_mysql_game_service():
     cls_repo = MysqlClassRepository()
     entity_repo = MysqlEntityRepository()
     world_repo = MysqlWorldRepository()
+    faction_repo = None
+    definition_repo = None
 
     event_bus = EventBus()
     progression = WorldProgression(world_repo, entity_repo, event_bus)
@@ -51,6 +61,8 @@ def _build_mysql_game_service():
         entity_repo=entity_repo,
         world_repo=world_repo,
         progression=progression,
+        faction_repo=faction_repo,
+        definition_repo=definition_repo,
     )
 
 

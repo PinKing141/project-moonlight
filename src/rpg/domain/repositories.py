@@ -3,9 +3,11 @@ from typing import List, Optional
 
 from rpg.domain.models.character import Character
 from rpg.domain.models.entity import Entity
+from rpg.domain.models.faction import Faction
 from rpg.domain.models.location import Location
 from rpg.domain.models.world import World
 from rpg.domain.models.character_class import CharacterClass
+from rpg.domain.models.encounter_definition import EncounterDefinition
 
 
 class CharacterRepository(ABC):
@@ -46,6 +48,10 @@ class WorldRepository(ABC):
 
 class EntityRepository(ABC):
     @abstractmethod
+    def get(self, entity_id: int) -> Optional[Entity]:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_many(self, entity_ids: List[int]) -> List[Entity]:
         raise NotImplementedError
 
@@ -82,3 +88,36 @@ class ClassRepository(ABC):
     @abstractmethod
     def list_playable(self) -> List[CharacterClass]:
         raise NotImplementedError
+
+    @abstractmethod
+    def get_by_slug(self, slug: str) -> Optional[CharacterClass]:
+        raise NotImplementedError
+
+
+class FactionRepository(ABC):
+    @abstractmethod
+    def get(self, faction_id: str) -> Optional[Faction]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_all(self) -> List[Faction]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save(self, faction: Faction) -> None:
+        raise NotImplementedError
+
+    def get_many(self, faction_ids: List[str]) -> List[Faction]:
+        lookup = {faction.id: faction for faction in self.list_all()}
+        return [lookup[fid] for fid in faction_ids if fid in lookup]
+
+
+class EncounterDefinitionRepository(ABC):
+    @abstractmethod
+    def list_for_location(self, location_id: int) -> List[EncounterDefinition]:
+        raise NotImplementedError
+
+    def list_global(self) -> List[EncounterDefinition]:
+        """Fallback hook for repositories that support global tables."""
+
+        return []

@@ -383,6 +383,10 @@ class MysqlCharacterRepository(CharacterRepository):
 
 
 class MysqlEntityRepository(EntityRepository):
+    def get(self, entity_id: int) -> Optional[Entity]:
+        results = self.get_many([entity_id])
+        return results[0] if results else None
+
     def list_for_level(self, target_level: int, tolerance: int = 2) -> List[Entity]:
         lower = target_level - tolerance
         upper = target_level + tolerance
