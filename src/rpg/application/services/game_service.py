@@ -28,7 +28,11 @@ class GameService:
         world_repo: WorldRepository | None = None,
         progression: WorldProgression | None = None,
         class_repo: ClassRepository | None = None,
-) -> None:
+        definition_repo: EncounterDefinitionRepository | None = None,
+        faction_repo: FactionRepository | None = None,
+        spell_repo: SpellRepository | None = None,
+        verbose_level: str = "compact",
+    ) -> None:
         from rpg.application.services.character_creation_service import CharacterCreationService
         from rpg.application.services.encounter_service import EncounterService
         from rpg.application.services.combat_service import CombatService

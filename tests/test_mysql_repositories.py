@@ -22,7 +22,12 @@ class MysqlEntityRepositoryTests(unittest.TestCase):
                     CREATE TABLE entity (
                         entity_id INTEGER PRIMARY KEY,
                         name TEXT NOT NULL,
-                        level INTEGER
+                        level INTEGER,
+                        armour_class INTEGER,
+                        attack_bonus INTEGER,
+                        damage_dice TEXT,
+                        hp_max INTEGER,
+                        kind TEXT
                     )
                     """
                 )
