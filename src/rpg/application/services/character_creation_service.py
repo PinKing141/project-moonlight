@@ -11,15 +11,21 @@ ABILITY_ORDER = ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
 POINT_BUY_COSTS = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
 STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
 
+FULL_TO_ABBR = {full: abbr.upper() for abbr, full in ABILITY_ALIASES.items()}
+
 
 class CharacterCreationService:
-    def __init__(self, character_repo: CharacterRepository,
-                 class_repo: ClassRepository,
-                 location_repo: LocationRepository):
+    def __init__(
+        self,
+        character_repo: CharacterRepository,
+        class_repo: ClassRepository,
+        location_repo: LocationRepository,
+        open5e_client=None,
+    ):
         self.character_repo = character_repo
         self.class_repo = class_repo
         self.location_repo = location_repo
-        self.races: List[Race] = self._default_races()
+        self.races: List[Race] = self._load_races(open5e_client)
         self.backgrounds: List[Background] = self._default_backgrounds()
         self.difficulties: List[DifficultyPreset] = self._default_difficulties()
         self.starting_equipment: Dict[str, List[str]] = self._default_starting_equipment()
@@ -136,6 +142,112 @@ class CharacterCreationService:
             Race(name="Dwarf", bonuses={"CON": 2, "WIS": 1}, speed=25, traits=["Darkvision", "Stonecunning"]),
             Race(name="Halfling", bonuses={"DEX": 2, "CHA": 1}, speed=25, traits=["Lucky", "Brave"]),
         ]
+
+    def _load_races(self, open5e_client) -> List[Race]:
+        defaults = self._default_races()
+        if open5e_client is None:
+            return defaults
+
+        remote: List[Race] = []
+        try:
+            remote = self._fetch_open5e_races(open5e_client)
+        except Exception:
+            remote = []
+        finally:
+            try:
+                open5e_client.close()
+            except Exception:
+                pass
+
+        seen = {race.name.lower() for race in defaults}
+        merged: List[Race] = list(defaults)
+        for race in remote:
+            if race.name.lower() not in seen:
+                merged.append(race)
+                seen.add(race.name.lower())
+        return merged
+
+    def _fetch_open5e_races(self, client) -> List[Race]:
+        races: List[Race] = []
+        page = 1
+        while True:
+            payload = client.list_races(page=page)
+            results = payload.get("results", [])
+            if not results:
+                break
+            for row in results:
+                races.append(self._map_open5e_race(row))
+            if not payload.get("next"):
+                break
+            page += 1
+        return races
+
+    def _map_open5e_race(self, row: dict) -> Race:
+        name = row.get("name", "Unknown")
+        speed_raw = row.get("speed") or 30
+        try:
+            speed = int(speed_raw)
+        except Exception:
+            speed = 30
+
+        bonuses_raw = row.get("asi") or row.get("ability_bonuses") or row.get("ability_bonuses_json")
+        bonuses = self._parse_ability_bonuses(bonuses_raw)
+
+        traits_raw = row.get("traits") or row.get("asi_desc") or ""
+        traits = self._parse_traits(traits_raw)
+
+        return Race(name=name, bonuses=bonuses, speed=speed, traits=traits)
+
+    @staticmethod
+    def _parse_ability_bonuses(raw) -> Dict[str, int]:
+        bonuses: Dict[str, int] = {}
+
+        def _add_bonus(key: str, value) -> None:
+            try:
+                val_int = int(value)
+            except Exception:
+                return
+            full_key = ABILITY_ALIASES.get(key.lower(), key.lower())
+            abbr = FULL_TO_ABBR.get(full_key, full_key.upper())
+            bonuses[abbr] = bonuses.get(abbr, 0) + val_int
+
+        if isinstance(raw, list):
+            for entry in raw:
+                if isinstance(entry, dict):
+                    ability = entry.get("ability") or entry.get("ability_score") or entry.get("name")
+                    value = entry.get("value") or entry.get("bonus") or entry.get("score")
+                    if ability:
+                        _add_bonus(str(ability), value)
+                elif isinstance(entry, str):
+                    CharacterCreationService._parse_bonus_string(entry, _add_bonus)
+        elif isinstance(raw, dict):
+            for key, value in raw.items():
+                _add_bonus(str(key), value)
+        elif isinstance(raw, str):
+            CharacterCreationService._parse_bonus_string(raw, _add_bonus)
+
+        return bonuses
+
+    @staticmethod
+    def _parse_bonus_string(raw: str, add_bonus) -> None:
+        parts = [part.strip() for part in raw.replace(";", ",").split(",") if part.strip()]
+        for part in parts:
+            tokens = part.replace("+", " +").split()
+            if len(tokens) >= 2:
+                # formats like "+2 STR" or "STR +2"
+                if tokens[0].lstrip("+-").isdigit():
+                    add_bonus(tokens[1], tokens[0])
+                elif tokens[1].lstrip("+-").isdigit():
+                    add_bonus(tokens[0], tokens[1])
+
+    @staticmethod
+    def _parse_traits(raw) -> List[str]:
+        if isinstance(raw, list):
+            return [str(t).strip() for t in raw if str(t).strip()]
+        if isinstance(raw, str):
+            traits = [part.strip() for part in raw.replace(";", ",").split(",") if part.strip()]
+            return traits
+        return []
 
     @staticmethod
     def _default_backgrounds() -> List[Background]:

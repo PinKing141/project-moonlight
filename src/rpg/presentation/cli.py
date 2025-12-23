@@ -22,6 +22,7 @@ from rpg.infrastructure.db.mysql.repos import (
     MysqlLocationRepository,
     MysqlWorldRepository,
 )
+from rpg.infrastructure.open5e_client import Open5eClient
 
 
 def _bootstrap() -> tuple[GameService, CharacterCreationService]:
@@ -133,7 +134,9 @@ def _bootstrap_inmemory() -> tuple[GameService, CharacterCreationService]:
     )
     progression = WorldProgression(world_repo, entity_repo, event_bus)
 
-    creation_service = CharacterCreationService(char_repo, class_repo, location_repo)
+    creation_service = CharacterCreationService(
+        char_repo, class_repo, location_repo, open5e_client=Open5eClient()
+    )
 
     return (
         GameService(
@@ -156,7 +159,9 @@ def _bootstrap_mysql() -> tuple[GameService, CharacterCreationService]:
     _ensure_mysql_seed()
     progression = WorldProgression(world_repo, entity_repo, event_bus)
 
-    creation_service = CharacterCreationService(char_repo, class_repo, location_repo)
+    creation_service = CharacterCreationService(
+        char_repo, class_repo, location_repo, open5e_client=Open5eClient()
+    )
 
     return (
         GameService(
