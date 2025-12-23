@@ -6,6 +6,7 @@ from rpg.domain.models.entity import Entity
 from rpg.domain.models.location import Location
 from rpg.domain.models.world import World
 from rpg.domain.models.character_class import CharacterClass
+from rpg.domain.models.spell import Spell
 
 
 class CharacterRepository(ABC):
@@ -81,4 +82,14 @@ class LocationRepository(ABC):
 class ClassRepository(ABC):
     @abstractmethod
     def list_playable(self) -> List[CharacterClass]:
+        raise NotImplementedError
+
+
+class SpellRepository(ABC):
+    @abstractmethod
+    def get_by_slug(self, slug: str) -> Optional[Spell]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_by_class(self, class_slug: str, max_level: int) -> List[Spell]:
         raise NotImplementedError

@@ -49,3 +49,7 @@ class Character:
     flags: Dict[str, Any] = field(default_factory=dict)
     incoming_damage_multiplier: float = 1.0
     outgoing_damage_multiplier: float = 1.0
+    spell_slots_max: int = 0
+    spell_slots_current: int = 0
+    cantrips: List[str] = field(default_factory=list)
+    known_spells: List[str] = field(default_factory=list)

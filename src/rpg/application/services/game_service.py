@@ -13,6 +13,7 @@ from rpg.domain.repositories import (
     EntityRepository,
     LocationRepository,
     WorldRepository,
+    SpellRepository,
 )
 
 
@@ -25,6 +26,8 @@ class GameService:
         world_repo: WorldRepository | None = None,
         progression: WorldProgression | None = None,
         class_repo: ClassRepository | None = None,
+        spell_repo: SpellRepository | None = None,
+        verbose_level: str = "compact",
 ) -> None:
         from rpg.application.services.character_creation_service import CharacterCreationService
         from rpg.application.services.encounter_service import EncounterService
@@ -38,6 +41,8 @@ class GameService:
         self.character_creation_service = None
         self.encounter_service = None
         self.combat_service = None
+        self.spell_repo = spell_repo
+        self.verbose_level = verbose_level
 
         if class_repo and location_repo:
             self.character_creation_service = CharacterCreationService(
@@ -46,13 +51,15 @@ class GameService:
 
         if entity_repo:
             self.encounter_service = EncounterService(entity_repo)
-            self.combat_service = CombatService()
+            self.combat_service = CombatService(spell_repo, verbosity=verbose_level)
 
     def rest(self, character_id: int) -> tuple[Character, Optional["World"]]:
         character = self._require_character(character_id)
         heal_amount = max(character.hp_max // 4, 4)
         character.hp_current = min(character.hp_current + heal_amount, character.hp_max)
         character.alive = True
+        if hasattr(character, "spell_slots_max"):
+            character.spell_slots_current = getattr(character, "spell_slots_max", 0)
         self.character_repo.save(character)
         world = self.advance_world(ticks=1)
         return character, world

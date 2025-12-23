@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from sqlalchemy import bindparam, text
 
@@ -8,12 +8,14 @@ from rpg.domain.models.character_class import CharacterClass
 from rpg.domain.models.entity import Entity
 from rpg.domain.models.location import Location
 from rpg.domain.models.world import World
+from rpg.domain.models.spell import Spell
 from rpg.domain.repositories import (
     CharacterRepository,
     ClassRepository,
     EntityRepository,
     LocationRepository,
     WorldRepository,
+    SpellRepository,
 )
 from .connection import SessionLocal
 
@@ -32,6 +34,34 @@ DEFAULT_CLASS_BASE_ATTRIBUTES: Dict[str, Dict[str, int]] = {
     "warlock": {"STR": 10, "DEX": 12, "CON": 12, "INT": 12, "WIS": 12, "CHA": 16},
     "wizard": {"STR": 8, "DEX": 12, "CON": 12, "INT": 16, "WIS": 12, "CHA": 10},
 }
+
+
+def _row_to_spell(row) -> Spell:
+    classes = None
+    if getattr(row, "classes_json", None):
+        if isinstance(row.classes_json, str):
+            try:
+                classes = json.loads(row.classes_json)
+            except Exception:
+                classes = None
+        elif isinstance(row.classes_json, list):
+            classes = row.classes_json
+
+    return Spell(
+        slug=row.slug,
+        name=row.name,
+        level_int=row.level_int,
+        school=row.school,
+        casting_time=row.casting_time,
+        range_text=row.range_text,
+        duration=row.duration,
+        components=row.components,
+        concentration=bool(row.concentration),
+        ritual=bool(row.ritual),
+        desc_text=row.desc_text,
+        higher_level=row.higher_level,
+        classes=classes,
+    )
 
 
 def _default_stats_for_level(level: int) -> tuple[int, int, int, int]:
@@ -393,7 +423,7 @@ class MysqlEntityRepository(EntityRepository):
             rows = session.execute(
                 text(
                     """
-                    SELECT entity_id, name, level
+                    SELECT entity_id, name, level, armour_class, attack_bonus, damage_dice, hp_max, kind
                     FROM entity
                     WHERE level BETWEEN :low AND :high
                     """
@@ -405,6 +435,14 @@ class MysqlEntityRepository(EntityRepository):
                 level = row.level or 1
                 hp, attack_min, attack_max, armor = _default_stats_for_level(level)
                 ac, attack_bonus, damage_die = _default_combat_fields(level)
+                if row.hp_max:
+                    hp = row.hp_max
+                if row.armour_class:
+                    ac = row.armour_class
+                if row.attack_bonus:
+                    attack_bonus = row.attack_bonus
+                if row.damage_dice:
+                    damage_die = row.damage_dice
                 entities.append(
                     Entity(
                         id=row.entity_id,
@@ -419,6 +457,7 @@ class MysqlEntityRepository(EntityRepository):
                         armour_class=ac,
                         attack_bonus=attack_bonus,
                         damage_die=damage_die,
+                        kind=row.kind or "beast",
                         tags=[],
                     )
                 )
@@ -429,7 +468,7 @@ class MysqlEntityRepository(EntityRepository):
             rows = session.execute(
                 text(
                     """
-                    SELECT e.entity_id, e.name, e.level, e.entity_type_id
+                    SELECT e.entity_id, e.name, e.level, e.entity_type_id, e.armour_class, e.attack_bonus, e.damage_dice, e.hp_max, e.kind
                     FROM entity e
                     JOIN entity_location el ON el.entity_id = e.entity_id
                     WHERE el.location_id = :loc
@@ -443,6 +482,14 @@ class MysqlEntityRepository(EntityRepository):
                 level = row.level or 1
                 hp, attack_min, attack_max, armor = _default_stats_for_level(level)
                 ac, attack_bonus, damage_die = _default_combat_fields(level)
+                if row.hp_max:
+                    hp = row.hp_max
+                if row.armour_class:
+                    ac = row.armour_class
+                if row.attack_bonus:
+                    attack_bonus = row.attack_bonus
+                if row.damage_dice:
+                    damage_die = row.damage_dice
                 entities.append(
                     Entity(
                         id=row.entity_id,
@@ -457,6 +504,7 @@ class MysqlEntityRepository(EntityRepository):
                         armour_class=ac,
                         attack_bonus=attack_bonus,
                         damage_die=damage_die,
+                        kind=row.kind or "beast",
                         tags=[],
                     )
                 )
@@ -470,7 +518,7 @@ class MysqlEntityRepository(EntityRepository):
             rows = session.execute(
                 text(
                     """
-                    SELECT entity_id, name, level
+                    SELECT entity_id, name, level, armour_class, attack_bonus, damage_dice, hp_max, kind
                     FROM entity
                     WHERE entity_id IN :ids
                     """
@@ -483,6 +531,14 @@ class MysqlEntityRepository(EntityRepository):
                 level = row.level or 1
                 hp, attack_min, attack_max, armor = _default_stats_for_level(level)
                 ac, attack_bonus, damage_die = _default_combat_fields(level)
+                if row.hp_max:
+                    hp = row.hp_max
+                if row.armour_class:
+                    ac = row.armour_class
+                if row.attack_bonus:
+                    attack_bonus = row.attack_bonus
+                if row.damage_dice:
+                    damage_die = row.damage_dice
                 entities.append(
                     Entity(
                         id=row.entity_id,
@@ -497,6 +553,7 @@ class MysqlEntityRepository(EntityRepository):
                         armour_class=ac,
                         attack_bonus=attack_bonus,
                         damage_die=damage_die,
+                        kind=row.kind or "beast",
                         tags=[],
                     )
                 )
@@ -604,3 +661,41 @@ class MysqlLocationRepository(LocationRepository):
             if not row:
                 return None
             return Location(id=row.location_id, name=row.place_name, base_level=1)
+
+
+class MysqlSpellRepository(SpellRepository):
+    def get_by_slug(self, slug: str) -> Optional[Spell]:
+        with SessionLocal() as session:
+            row = session.execute(
+                text(
+                    """
+                    SELECT slug, name, level_int, school, casting_time, range_text, duration,
+                           components, concentration, ritual, desc_text, higher_level, classes_json
+                    FROM spell
+                    WHERE slug = :slug
+                    """
+                ),
+                {"slug": slug},
+            ).mappings().first()
+            return _row_to_spell(row) if row else None
+
+    def list_by_class(self, class_slug: str, max_level: int) -> Sequence[Spell]:
+        class_name = class_slug.title()
+        with SessionLocal() as session:
+            rows = session.execute(
+                text(
+                    """
+                    SELECT slug, name, level_int, school, casting_time, range_text, duration,
+                           components, concentration, ritual, desc_text, higher_level, classes_json
+                    FROM spell
+                    WHERE level_int <= :max_level
+                      AND (
+                        classes_json IS NULL
+                        OR JSON_CONTAINS(classes_json, JSON_QUOTE(:class_name))
+                      )
+                    ORDER BY level_int ASC, name ASC
+                    """
+                ),
+                {"max_level": max_level, "class_name": class_name},
+            ).mappings().all()
+            return [_row_to_spell(r) for r in rows]

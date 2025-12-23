@@ -65,6 +65,52 @@ def _apply_difficulty_to_hp(raw_hp: int, difficulty: Optional[DifficultyPreset])
     return max(scaled, 1)
 
 
+def _starting_spell_loadout(cls: CharacterClass) -> tuple[int, list[str], list[str]]:
+    """Return (slot_count, cantrips, level_1_spells) for the class."""
+    slug = (cls.slug or "").lower()
+    full_casters = {"wizard", "sorcerer", "cleric", "bard", "druid"}
+    half_casters = {"paladin", "ranger", "artificer"}
+    pact_casters = {"warlock"}
+
+    cantrips: list[str] = []
+    spells: list[str] = []
+    slots = 0
+
+    if slug in full_casters:
+        slots = 2
+    elif slug in half_casters:
+        slots = 1
+    elif slug in pact_casters:
+        slots = 1
+
+    if slug == "wizard":
+        cantrips = ["Fire Bolt", "Ray of Frost"]
+        spells = ["Magic Missile", "Shield"]
+    elif slug == "sorcerer":
+        cantrips = ["Fire Bolt"]
+        spells = ["Burning Hands", "Mage Armor"]
+    elif slug == "cleric":
+        cantrips = ["Sacred Flame"]
+        spells = ["Cure Wounds", "Guiding Bolt"]
+    elif slug == "bard":
+        cantrips = ["Vicious Mockery"]
+        spells = ["Healing Word", "Dissonant Whispers"]
+    elif slug == "druid":
+        cantrips = ["Produce Flame"]
+        spells = ["Healing Word"]
+    elif slug == "warlock":
+        cantrips = ["Eldritch Blast"]
+        spells = ["Hex"]
+    elif slug == "paladin":
+        spells = ["Lay on Hands"]
+    elif slug == "ranger":
+        spells = ["Hunter's Mark"]
+    elif slug == "artificer":
+        spells = ["Cure Wounds"]
+
+    return slots, cantrips, spells
+
+
 def create_new_character(
     name: str,
     cls: CharacterClass,
@@ -89,6 +135,8 @@ def create_new_character(
     proficiencies = list(background.proficiencies) if background else []
     money = background.starting_money if background else 0
     inventory = list(starting_equipment) if starting_equipment else []
+
+    slots, cantrips, spells = _starting_spell_loadout(cls)
 
     difficulty_slug = difficulty.slug if difficulty else "normal"
     flags: Dict[str, str] = {"difficulty": difficulty_slug} if difficulty else {}
@@ -121,4 +169,8 @@ def create_new_character(
         inventory=inventory,
         incoming_damage_multiplier=difficulty.incoming_damage_multiplier if difficulty else 1.0,
         outgoing_damage_multiplier=difficulty.outgoing_damage_multiplier if difficulty else 1.0,
+        spell_slots_max=slots,
+        spell_slots_current=slots,
+        cantrips=cantrips,
+        known_spells=spells,
     )

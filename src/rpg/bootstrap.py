@@ -10,6 +10,7 @@ from rpg.infrastructure.inmemory.inmemory_world_repo import InMemoryWorldReposit
 
 
 def _build_inmemory_game_service() -> GameService:
+    verbosity = os.getenv("RPG_VERBOSITY", "compact").lower()
     char_repo = InMemoryCharacterRepository()
     loc_repo = InMemoryLocationRepository()
     cls_repo = InMemoryClassRepository()
@@ -22,6 +23,7 @@ def _build_inmemory_game_service() -> GameService:
         class_repo=cls_repo,
         entity_repo=entity_repo,
         world_repo=world_repo,
+        verbose_level=verbosity,
     )
 
 
@@ -33,6 +35,7 @@ def _build_mysql_game_service():
         MysqlEntityRepository,
         MysqlLocationRepository,
         MysqlWorldRepository,
+        MysqlSpellRepository,
     )
 
     char_repo = MysqlCharacterRepository()
@@ -40,6 +43,8 @@ def _build_mysql_game_service():
     cls_repo = MysqlClassRepository()
     entity_repo = MysqlEntityRepository()
     world_repo = MysqlWorldRepository()
+    spell_repo = MysqlSpellRepository()
+    verbosity = os.getenv("RPG_VERBOSITY", "compact").lower()
 
     event_bus = EventBus()
     progression = WorldProgression(world_repo, entity_repo, event_bus)
@@ -51,6 +56,8 @@ def _build_mysql_game_service():
         entity_repo=entity_repo,
         world_repo=world_repo,
         progression=progression,
+        spell_repo=spell_repo,
+        verbose_level=verbosity,
     )
 
 

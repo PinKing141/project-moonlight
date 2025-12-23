@@ -1,4 +1,3 @@
-import random
 from typing import Dict, List
 
 from rpg.application.services.character_creation_service import ABILITY_ORDER, POINT_BUY_COSTS
