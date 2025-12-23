@@ -1,15 +1,30 @@
 from __future__ import annotations
 
+import hashlib
 import random
 from typing import Optional
 
+from rpg.application.dtos import EncounterPlan
 from rpg.domain.models.entity import Entity
-from rpg.domain.repositories import EntityRepository
+from rpg.domain.repositories import (
+    EncounterDefinitionRepository,
+    EntityRepository,
+    FactionRepository,
+)
+from rpg.domain.services.encounter_planner import EncounterPlanner
 
 
 class EncounterService:
-    def __init__(self, entity_repo: EntityRepository) -> None:
+    def __init__(
+        self,
+        entity_repo: EntityRepository,
+        definition_repo: EncounterDefinitionRepository | None = None,
+        faction_repo: FactionRepository | None = None,
+    ) -> None:
         self.entity_repo = entity_repo
+        self.definition_repo = definition_repo
+        self.faction_repo = faction_repo
+        self.planner = EncounterPlanner(entity_repo)
 
     def _weighted_pick(self, pool: list[Entity], count: int, faction_bias: str | None) -> list[Entity]:
         if not pool:
@@ -34,21 +49,45 @@ class EncounterService:
             remaining = [entity for entity in remaining if entity.id != chosen.id]
         return picks
 
-    def generate(
+    def generate_plan(
         self,
         location_id: int,
         player_level: int,
         world_turn: int,
         faction_bias: str | None = None,
         max_enemies: int = 1,
-    ) -> list[Entity]:
-        """Return a small list of entities for an encounter, deterministic per turn."""
-        random.seed(hash((location_id, player_level, world_turn, faction_bias, max_enemies)))
+    ) -> EncounterPlan:
+        """Return a deterministic encounter plan for the given context."""
+
+        seed_material = f"{location_id}:{player_level}:{world_turn}:{faction_bias}:{max_enemies}"
+        seed = int(hashlib.sha256(seed_material.encode("utf-8")).hexdigest(), 16) % (2**32)
+        random.seed(seed)
+
+        if self.definition_repo:
+            definitions = self.definition_repo.list_for_location(location_id)
+            if not definitions:
+                definitions = self.definition_repo.list_global()
+            chosen, enemies = self.planner.plan_encounter(
+                definitions=definitions,
+                player_level=player_level,
+                location_id=location_id,
+                seed=seed,
+                faction_bias=faction_bias,
+                max_enemies=max_enemies,
+            )
+            if enemies:
+                return EncounterPlan(
+                    enemies=enemies,
+                    definition_id=chosen.id if chosen else None,
+                    faction_bias=faction_bias,
+                    source="definition",
+                )
 
         by_location = self.entity_repo.list_by_location(location_id)
         if by_location:
             count = min(max(1, max_enemies), len(by_location))
-            return self._weighted_pick(by_location, count, faction_bias)
+            enemies = self._weighted_pick(by_location, count, faction_bias)
+            return EncounterPlan(enemies=enemies, faction_bias=faction_bias, source="location")
 
         level_min = max(1, player_level - 1)
         level_max = player_level + 2
@@ -58,11 +97,31 @@ class EncounterService:
         else:
             mid = (level_min + level_max) // 2
             band = self.entity_repo.list_for_level(mid, tolerance=level_max - mid)
+
         if not band:
-            return []
+            return EncounterPlan(enemies=[], faction_bias=faction_bias, source="empty")
 
         count = min(max(1, max_enemies), len(band))
-        return self._weighted_pick(band, count, faction_bias)
+        enemies = self._weighted_pick(band, count, faction_bias)
+        return EncounterPlan(enemies=enemies, faction_bias=faction_bias, source="level-band")
+
+    def generate(
+        self,
+        location_id: int,
+        player_level: int,
+        world_turn: int,
+        faction_bias: str | None = None,
+        max_enemies: int = 1,
+    ) -> list[Entity]:
+        """Return a small list of entities for an encounter, deterministic per turn."""
+
+        return self.generate_plan(
+            location_id=location_id,
+            player_level=player_level,
+            world_turn=world_turn,
+            faction_bias=faction_bias,
+            max_enemies=max_enemies,
+        ).enemies
 
     def find_encounter(self, location_id: int, character_level: int) -> Optional[Entity]:
         """Legacy helper for callers; wraps generate using a deterministic world_turn of 0."""

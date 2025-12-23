@@ -40,3 +40,10 @@ class InMemoryClassRepository(ClassRepository):
 
     def list_playable(self) -> List[CharacterClass]:
         return list(self._classes)
+
+    def get_by_slug(self, slug: str) -> CharacterClass | None:
+        slug_key = slug.lower().strip()
+        for cls in self._classes:
+            if cls.slug.lower() == slug_key:
+                return cls
+        return None

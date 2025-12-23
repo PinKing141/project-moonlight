@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from rpg.domain.models.stats import CombatStats
+
 
 @dataclass
 class Entity:
@@ -27,3 +29,24 @@ class Entity:
             self.hp_max = self.hp
         if self.hp_current <= 0:
             self.hp_current = self.hp_max
+
+    @property
+    def combat_stats(self) -> CombatStats:
+        """Return a reusable combat stats wrapper for the entity."""
+
+        return CombatStats(
+            hp=self.hp,
+            attack_min=self.attack_min,
+            attack_max=self.attack_max,
+            armor=self.armor,
+            armour_class=self.armour_class,
+            attack_bonus=self.attack_bonus,
+            damage_die=self.damage_die,
+            tags=list(self.tags),
+        )
+
+    @property
+    def threat_rating(self) -> float:
+        """Expose the combat threat rating for encounter planning."""
+
+        return self.combat_stats.threat_rating

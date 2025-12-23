@@ -54,6 +54,12 @@ class InMemoryEntityRepository(EntityRepository):
         self._entities = list(entities)
         self._by_location: Dict[int, List[int]] = {}
 
+    def get(self, entity_id: int) -> Entity | None:
+        for entity in self._entities:
+            if entity.id == entity_id:
+                return entity
+        return None
+
     def get_many(self, entity_ids: List[int]) -> List[Entity]:
         if not entity_ids:
             return []

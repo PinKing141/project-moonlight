@@ -1,7 +1,7 @@
 import random
 from typing import Optional
 
-from rpg.application.dtos import ActionResult
+from rpg.application.dtos import ActionResult, EncounterPlan
 from rpg.application.services.world_progression import WorldProgression
 from rpg.domain.events import MonsterSlain
 from rpg.domain.models.character import Character
@@ -10,7 +10,9 @@ from rpg.domain.models.location import Location
 from rpg.domain.repositories import (
     CharacterRepository,
     ClassRepository,
+    EncounterDefinitionRepository,
     EntityRepository,
+    FactionRepository,
     LocationRepository,
     WorldRepository,
 )
@@ -25,6 +27,8 @@ class GameService:
         world_repo: WorldRepository | None = None,
         progression: WorldProgression | None = None,
         class_repo: ClassRepository | None = None,
+        definition_repo: EncounterDefinitionRepository | None = None,
+        faction_repo: FactionRepository | None = None,
 ) -> None:
         from rpg.application.services.character_creation_service import CharacterCreationService
         from rpg.application.services.encounter_service import EncounterService
@@ -35,6 +39,8 @@ class GameService:
         self.location_repo = location_repo
         self.world_repo = world_repo
         self.progression = progression
+        self.definition_repo = definition_repo
+        self.faction_repo = faction_repo
         self.character_creation_service = None
         self.encounter_service = None
         self.combat_service = None
@@ -45,7 +51,11 @@ class GameService:
             )
 
         if entity_repo:
-            self.encounter_service = EncounterService(entity_repo)
+            self.encounter_service = EncounterService(
+                entity_repo,
+                definition_repo=definition_repo,
+                faction_repo=faction_repo,
+            )
             self.combat_service = CombatService()
 
     def rest(self, character_id: int) -> tuple[Character, Optional["World"]]:
@@ -79,14 +89,14 @@ class GameService:
         world = self._require_world()
 
         if not self.encounter_service:
-            return [], character, world
+            return EncounterPlan(enemies=[], source="disabled"), character, world
 
         location = self.location_repo.get(character.location_id) if self.location_repo else None
         faction_bias = None
         if location and getattr(location, "factions", None):
             faction_bias = location.factions[0] if location.factions else None
 
-        encounter = self.encounter_service.generate(
+        plan = self.encounter_service.generate_plan(
             location_id=character.location_id or 0,
             player_level=character.level,
             world_turn=world.current_turn,
@@ -95,7 +105,7 @@ class GameService:
         )
 
         self.advance_world(ticks=1)
-        return encounter, character, world
+        return plan, character, world
 
     def get_player_view(self, player_id: int) -> str:
         world = self._require_world()
