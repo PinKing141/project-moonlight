@@ -511,19 +511,26 @@ class CombatService:
             player.flags["shield_rounds"] = max(player.flags.get("shield_rounds", 0) - 1, 0)
             if player.flags["shield_rounds"] <= 0:
                 player.flags.pop("temp_ac_bonus", None)
-        round_no += 1
-        if round_no > 50:
-            break  # safety
+            round_no += 1
+            if round_no > 50:
+                player.hp_current = player_hp
+                player.alive = player_hp > 0
+                return CombatResult(
+                    player,
+                    foe,
+                    log,
+                    player_won=player_hp > 0 and foe.hp_current <= 0,
+                )
 
-    player.hp_current = player_hp
-    player.alive = player_hp > 0
+        player.hp_current = player_hp
+        player.alive = player_hp > 0
 
-    if foe.hp_current <= 0:
-        xp_gain = max(getattr(foe, "level", 1) * 5, 1)
-        player.xp += xp_gain
+        if foe.hp_current <= 0:
+            xp_gain = max(getattr(foe, "level", 1) * 5, 1)
+            player.xp += xp_gain
             self._log(log, f"{foe.name} falls. +{xp_gain} XP.", level="compact")
 
-    return CombatResult(player, foe, log, player_won=player_hp > 0 and foe.hp_current <= 0)
+        return CombatResult(player, foe, log, player_won=player_hp > 0 and foe.hp_current <= 0)
 
     def _resolve_spell_cast(
         self,

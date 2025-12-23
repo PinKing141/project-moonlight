@@ -17,6 +17,7 @@ from rpg.domain.repositories import (
     WorldRepository,
     SpellRepository,
 )
+from rpg.infrastructure.db.mysql.open5e_monster_importer import UpsertResult
 from .connection import SessionLocal
 
 
@@ -416,6 +417,151 @@ class MysqlEntityRepository(EntityRepository):
     def get(self, entity_id: int) -> Optional[Entity]:
         results = self.get_many([entity_id])
         return results[0] if results else None
+
+    def get_default_location_id(self) -> Optional[int]:
+        with SessionLocal() as session:
+            return session.execute(
+                text(
+                    """
+                    SELECT location_id
+                    FROM location
+                    ORDER BY location_id
+                    LIMIT 1
+                    """
+                )
+            ).scalar()
+
+    def upsert_entities(self, entities: Sequence[Entity], location_id: Optional[int] = None) -> UpsertResult:
+        if not entities:
+            return UpsertResult()
+
+        created = 0
+        updated = 0
+        attached = 0
+
+        with SessionLocal.begin() as session:
+            monster_type_id = self._ensure_entity_type(session, "monster")
+
+            for entity in entities:
+                payload = {
+                    "entity_type_id": monster_type_id,
+                    "name": entity.name,
+                    "level": entity.level,
+                    "armour_class": entity.armour_class,
+                    "attack_bonus": entity.attack_bonus,
+                    "damage_dice": entity.damage_die,
+                    "hp_max": entity.hp_max,
+                    "kind": entity.kind,
+                }
+
+                existing_id = session.execute(
+                    text(
+                        """
+                        SELECT entity_id
+                        FROM entity
+                        WHERE LOWER(name) = :name
+                        LIMIT 1
+                        """
+                    ),
+                    {"name": entity.name.lower()},
+                ).scalar()
+
+                if existing_id:
+                    session.execute(
+                        text(
+                            """
+                            UPDATE entity
+                            SET level = :level,
+                                armour_class = :armour_class,
+                                attack_bonus = :attack_bonus,
+                                damage_dice = :damage_dice,
+                                hp_max = :hp_max,
+                                kind = :kind
+                            WHERE entity_id = :entity_id
+                            """
+                        ),
+                        payload | {"entity_id": existing_id},
+                    )
+                    entity_id = existing_id
+                    updated += 1
+                else:
+                    result = session.execute(
+                        text(
+                            """
+                            INSERT INTO entity (entity_type_id, name, level, armour_class, attack_bonus, damage_dice, hp_max, kind)
+                            VALUES (:entity_type_id, :name, :level, :armour_class, :attack_bonus, :damage_dice, :hp_max, :kind)
+                            """
+                        ),
+                        payload,
+                    )
+                    entity_id = result.lastrowid
+                    created += 1
+
+                if location_id is not None:
+                    attached_now = self._attach_location(session, entity_id, location_id)
+                    attached += 1 if attached_now else 0
+
+        return UpsertResult(created=created, updated=updated, attached=attached)
+
+    @staticmethod
+    def _ensure_entity_type(session, name: str) -> int:
+        row = session.execute(
+            text(
+                """
+                SELECT entity_type_id
+                FROM entity_type
+                WHERE LOWER(name) = :name
+                LIMIT 1
+                """
+            ),
+            {"name": name.lower()},
+        ).first()
+        if row:
+            return row.entity_type_id
+
+        result = session.execute(text("INSERT INTO entity_type (name) VALUES (:name)"), {"name": name})
+        return result.lastrowid
+
+    @staticmethod
+    def _attach_location(session, entity_id: int, location_id: int) -> bool:
+        current_location = session.execute(
+            text(
+                """
+                SELECT location_id
+                FROM entity_location
+                WHERE entity_id = :entity_id
+                LIMIT 1
+                """
+            ),
+            {"entity_id": entity_id},
+        ).scalar()
+
+        if current_location is None:
+            session.execute(
+                text(
+                    """
+                    INSERT INTO entity_location (entity_id, location_id)
+                    VALUES (:entity_id, :location_id)
+                    """
+                ),
+                {"entity_id": entity_id, "location_id": location_id},
+            )
+            return True
+
+        if current_location != location_id:
+            session.execute(
+                text(
+                    """
+                    UPDATE entity_location
+                    SET location_id = :location_id
+                    WHERE entity_id = :entity_id
+                    """
+                ),
+                {"entity_id": entity_id, "location_id": location_id},
+            )
+            return True
+
+        return False
 
     def list_for_level(self, target_level: int, tolerance: int = 2) -> List[Entity]:
         lower = target_level - tolerance

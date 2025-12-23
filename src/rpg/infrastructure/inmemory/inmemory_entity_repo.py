@@ -4,6 +4,7 @@ from typing import Dict, List
 
 from rpg.domain.models.entity import Entity
 from rpg.domain.repositories import EntityRepository
+from rpg.infrastructure.db.mysql.open5e_monster_importer import UpsertResult
 
 
 class InMemoryEntityRepository(EntityRepository):
@@ -65,3 +66,39 @@ class InMemoryEntityRepository(EntityRepository):
 
     def list_by_level_band(self, level_min: int, level_max: int) -> List[Entity]:
         return [entity for entity in self._entities if level_min <= entity.level <= level_max]
+
+    def upsert_entities(self, entities: List[Entity], location_id: int | None = None) -> UpsertResult:
+        next_id = max((entity.id for entity in self._entities), default=0) + 1
+        created = 0
+        updated = 0
+        attached = 0
+
+        for entity in entities:
+            existing = next((e for e in self._entities if e.name.lower() == entity.name.lower()), None)
+            if existing:
+                existing.level = entity.level
+                existing.armour_class = entity.armour_class
+                existing.attack_bonus = entity.attack_bonus
+                existing.damage_die = entity.damage_die
+                existing.hp = entity.hp
+                existing.hp_max = entity.hp_max
+                existing.kind = entity.kind
+                updated += 1
+                entity_id = existing.id
+            else:
+                entity.id = next_id
+                next_id += 1
+                self._entities.append(entity)
+                created += 1
+                entity_id = entity.id
+
+            if location_id is not None:
+                self._by_location.setdefault(location_id, [])
+                if entity_id not in self._by_location[location_id]:
+                    self._by_location[location_id].append(entity_id)
+                    attached += 1
+
+        return UpsertResult(created=created, updated=updated, attached=attached)
+
+    def get_default_location_id(self) -> int | None:
+        return next(iter(self._by_location.keys()), None)

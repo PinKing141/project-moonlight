@@ -4,7 +4,9 @@ from typing import List, Optional
 from rpg.domain.models.character import Character
 from rpg.domain.models.entity import Entity
 from rpg.domain.models.faction import Faction
+from rpg.domain.models.encounter_definition import EncounterDefinition
 from rpg.domain.models.location import Location
+from rpg.domain.models.spell import Spell
 from rpg.domain.models.world import World
 from rpg.domain.models.character_class import CharacterClass
 
@@ -86,4 +88,37 @@ class LocationRepository(ABC):
 class ClassRepository(ABC):
     @abstractmethod
     def list_playable(self) -> List[CharacterClass]:
+        raise NotImplementedError
+
+
+class EncounterDefinitionRepository(ABC):
+    @abstractmethod
+    def list_for_location(self, location_id: int) -> List[EncounterDefinition]:
+        raise NotImplementedError
+
+    def list_global(self) -> List[EncounterDefinition]:
+        return []
+
+
+class FactionRepository(ABC):
+    @abstractmethod
+    def get(self, faction_id: str) -> Optional[Faction]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_all(self) -> List[Faction]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save(self, faction: Faction) -> None:
+        raise NotImplementedError
+
+
+class SpellRepository(ABC):
+    @abstractmethod
+    def get_by_slug(self, slug: str) -> Optional[Spell]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_by_class(self, class_slug: str, max_level: int):
         raise NotImplementedError
