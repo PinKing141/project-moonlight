@@ -60,13 +60,14 @@ def _run_explore(game_service, char):
         return
 
     try:
-        encounter, character, world = game_service.explore(char.id)
+        plan, character, world = game_service.explore(char.id)
     except Exception:
-        encounter = []
+        plan = None
         character = char
         world = None
 
-    if not encounter:
+    enemies = plan.enemies if plan else []
+    if not enemies:
         print("You find nothing of interest today.")
         input("Press ENTER to continue...")
         return
@@ -79,7 +80,7 @@ def _run_explore(game_service, char):
     player = character
     player_survived = True
 
-    for idx, enemy in enumerate(encounter, start=1):
+    for idx, enemy in enumerate(enemies, start=1):
         intro = random_intro(enemy)
         scene = _generate_scene()
         clear_screen()
