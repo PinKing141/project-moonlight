@@ -11,6 +11,7 @@ from rpg.infrastructure.inmemory.inmemory_encounter_definition_repo import (
 from rpg.infrastructure.inmemory.inmemory_faction_repo import InMemoryFactionRepository
 from rpg.infrastructure.inmemory.inmemory_location_repo import InMemoryLocationRepository
 from rpg.infrastructure.inmemory.inmemory_world_repo import InMemoryWorldRepository
+from rpg.infrastructure.open5e_client import Open5eClient
 
 
 def _build_inmemory_game_service() -> GameService:
@@ -29,6 +30,7 @@ def _build_inmemory_game_service() -> GameService:
         class_repo=cls_repo,
         entity_repo=entity_repo,
         world_repo=world_repo,
+        open5e_client_factory=Open5eClient,
     )
 
 
@@ -59,6 +61,7 @@ def _build_mysql_game_service():
         entity_repo=entity_repo,
         world_repo=world_repo,
         progression=progression,
+        open5e_client_factory=Open5eClient,
     )
 
 

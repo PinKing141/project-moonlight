@@ -92,7 +92,7 @@ def _format_bonus_line(bonuses: Dict[str, int]) -> str:
 def _choose_race(creation_service):
     races = creation_service.list_races()
     options = [
-        f"{race.name:<10} | {_format_bonus_line(race.bonuses):<18} | Speed {race.speed} | {', '.join(race.traits)}"
+        f"{race.name:<12} | {_format_bonus_line(race.bonuses):<18} | Speed {race.speed:<2} | {_format_trait_summary(race.traits)}"
         for race in races
     ]
     idx = arrow_menu("CHOOSE YOUR RACE", options)
@@ -124,6 +124,42 @@ def _choose_difficulty(creation_service):
     if idx < 0:
         return None
     return difficulties[idx]
+
+
+def _clean_trait_text(raw: str) -> str:
+    """Return a short, single-line summary for a trait string."""
+    if not raw:
+        return ""
+    text = raw.replace("*", "").replace("_", "")
+    text = " ".join(text.split())  # collapse newlines/tabs
+    if not text:
+        return ""
+    sentence = text.split(". ")[0].strip()
+    sentence = sentence.split(",")[0].strip()
+    if sentence.endswith("."):
+        sentence = sentence[:-1]
+    max_len = 60
+    if len(sentence) > max_len:
+        sentence = sentence[: max_len - 3].rstrip() + "..."
+    return sentence
+
+
+def _format_trait_summary(traits: List[str], limit: int = 2) -> str:
+    cleaned = [_clean_trait_text(t) for t in traits or []]
+    cleaned = [t for t in cleaned if t]
+    if not cleaned:
+        return "No traits"
+
+    def _looks_like_title(val: str) -> bool:
+        first = val.split()[0].lower()
+        return val[:1].isupper() and first not in {"and", "or", "you", "your", "the", "a", "an", "in", "on", "with", "while", "when", "if", "as", "which"}
+
+    primary = [t for t in cleaned if _looks_like_title(t)]
+    pool = primary or cleaned
+    shown = pool[:limit]
+    if len(pool) > limit:
+        shown.append(f"+{len(pool) - limit} more")
+    return ", ".join(shown)
 
 
 def _point_buy_cost(scores: Dict[str, int]) -> int:

@@ -1,5 +1,5 @@
 import random
-from typing import Optional
+from typing import Callable, Optional
 
 from rpg.application.dtos import ActionResult, EncounterPlan
 from rpg.application.services.world_progression import WorldProgression
@@ -32,6 +32,7 @@ class GameService:
         faction_repo: FactionRepository | None = None,
         spell_repo: SpellRepository | None = None,
         verbose_level: str = "compact",
+        open5e_client_factory: Callable[[], object] | None = None,
     ) -> None:
         from rpg.application.services.character_creation_service import CharacterCreationService
         from rpg.application.services.encounter_service import EncounterService
@@ -51,8 +52,14 @@ class GameService:
         self.verbose_level = verbose_level
 
         if class_repo and location_repo:
+            client = None
+            if open5e_client_factory:
+                try:
+                    client = open5e_client_factory()
+                except Exception:
+                    client = None
             self.character_creation_service = CharacterCreationService(
-                character_repo, class_repo, location_repo
+                character_repo, class_repo, location_repo, open5e_client=client
             )
 
         if entity_repo:
